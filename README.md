@@ -12,7 +12,7 @@ FontCrate 是面向 Windows 的轻量字体管理工具，帮助日常设计中�
 
 这个项目受到 **MainType** 的启发。MainType 提供了丰富、专业的字体管理能力，但对我日常做设计的需求来说，它显得有些笨重，许多专业功能并不常用。
 
-设计工作需要丰富的字体选择，但每个项目实际用到的字体通常只是其中一部分。大量字体长期处于安装或启用状态，会增加系统和设计软件处理字体的负担；字体菜单的加载、浏览和预览也更容易出现响应变慢或卡顿。[^font-performance]
+设计工作需要丰富的字体选择，但每个项目实际用到的字体通常只是其中一部分。大量字体长期处于安装或启用状态，会增加系统和设计软件处理字体的负担；字体菜单的加载、浏览和预览也更容易出现响应变慢或卡顿。
 
 我的核心需求是围绕设计项目管理字体：集中整理与预览字体资源，根据项目需要启用相应字体，完成后停用。将字体资源库与系统常驻字体分开管理，既能保留完整的字体收藏，也能让工作环境保持精简，让项目用字的选择与切换更高效。
 
@@ -78,5 +78,3 @@ powershell -ExecutionPolicy Bypass -File tools/publish.ps1
 ## 作者与许可证
 
 作者：**Hwangzhun** · [GitHub 仓库](https://github.com/hwangzhun/FontCrate)。项目采用 [GNU GPL v3（GPL-3.0-only）](LICENSE)；第三方组件说明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
-
-[^font-performance]: [MainType 官方手册](https://www.high-logic.com/maintype/manual13/fm_install_and_load_fonts.html)指出，系统性能受到活动字体数量的影响，并建议按需加载字体；[Adobe Fonts 官方说明](https://helpx.adobe.com/fonts/web/getting-and-using-fonts/managing-fonts.html)建议移除不再使用的字体，以缩短字体菜单并改善性能。[Adobe 的 Illustrator CS3 故障排查文档](https://helpx.adobe.com/archive/illustrator/illustrator-cs3-troubleshooting.pdf)也说明了安装字体数量与字体菜单显示耗时的关系，该文档适用于旧版软件。
