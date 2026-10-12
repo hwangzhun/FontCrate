@@ -8,6 +8,7 @@ namespace FontCrate.App;
 public partial class App : System.Windows.Application
 {
     private Mutex? instance;
+    private Mutex? installerGuard;
     private Forms.NotifyIcon? tray;
     private System.Drawing.Icon? trayIcon;
     private MainViewModel? model;
@@ -20,6 +21,8 @@ public partial class App : System.Windows.Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Inno Setup checks this stable name before installation and uninstallation.
+        installerGuard = new Mutex(false, "Local\\FontCrate-Running");
         // Keep the legacy mutex so the old and new applications cannot edit the same database concurrently.
         string instanceName = "Local\\FontLite-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Environment.UserName)))[..16];
         instance = new Mutex(true, instanceName, out bool first);
@@ -126,5 +129,5 @@ public partial class App : System.Windows.Application
         try { if (confirmations is not null) await confirmations.InformAsync("FontCrate 保持运行", message); }
         finally { window?.ResumeTaskDialog(); }
     }
-    protected override void OnExit(ExitEventArgs e) { theme?.Dispose(); tray?.Dispose(); trayIcon?.Dispose(); instance?.Dispose(); base.OnExit(e); }
+    protected override void OnExit(ExitEventArgs e) { theme?.Dispose(); tray?.Dispose(); trayIcon?.Dispose(); instance?.Dispose(); installerGuard?.Dispose(); base.OnExit(e); }
 }

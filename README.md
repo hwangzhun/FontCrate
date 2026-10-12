@@ -6,7 +6,7 @@
 
 <p align="center">把字体整理好，需要时再加载。</p>
 
-FontCrate 是面向 Windows 的轻量字体管理工具，帮助日常设计中的字体整理、预览和按需使用。
+FontCrate 是面向 Windows 10 1809+ / Windows 11 x64 的轻量字体管理工具，帮助日常设计中的字体整理、预览和按需使用。
 
 ## 为什么开发 FontCrate
 
@@ -30,7 +30,9 @@ FontCrate 是面向 Windows 的轻量字体管理工具，帮助日常设计中�
 
 ## 开始使用
 
-解压 `FontCrate-win-x64.zip`，运行 `FontCrate.exe`。自包含运行包已带有 .NET 运行时，无需另行安装，也不要求管理员权限。
+下载并运行 `FontCrate-Setup-<版本>-win-x64.exe`，安装后从开始菜单或桌面快捷方式启动 FontCrate。安装程序仅面向当前用户，默认安装到 `%LOCALAPPDATA%\Programs\FontCrate`，已包含 .NET 运行时，无需另行安装，也不要求管理员权限。
+
+升级或卸载前，请从程序或托盘菜单选择“退出并停用临时字体”。卸载仅移除程序文件和快捷方式，保留字体库、设置、原始字体与已安装到当前用户的字体。当前安装包未签名，Windows 可能显示 SmartScreen 提示。
 
 1. **添加字体**：点击“添加目录”，选择存放字体的文件夹，等待扫描完成。加入字体库不会自动把字体安装到系统。
 2. **找到合适的字体**：在字体库中搜索名称，或按来源、标签、合集、收藏和状态筛选。输入实际要排版的文字，比较预览效果。
@@ -53,9 +55,9 @@ FontCrate 的卸载只处理它自己安装的字体；移除来源或删除标�
 
 ## 当前进展
 
-项目处于开发与验证阶段，已通过 Linux 环境下的 Release 构建和 106 项自动化测试。Windows 原生界面、字体渲染、跨应用启用与性能仍待验收，当前运行包为待验收构建。按需加载是项目的设计目标，实际性能改善尚未测量。
+项目处于开发与验证阶段，已通过 Linux 环境下的 Release 构建和 106 项自动化测试。Windows 原生界面、字体渲染、跨应用启用与性能仍待验收，当前安装版为待验收构建。按需加载是项目的设计目标，实际性能改善尚未测量。
 
-验证情况与步骤见 [验收文档](docs/VALIDATION.zh-CN.md)。
+验证情况与步骤见 [安装与验收说明](docs/INSTALLER.zh-CN.md)。
 
 ## 简单的技术说明
 
@@ -69,11 +71,13 @@ dotnet test tests/FontCrate.Tests/FontCrate.Tests.csproj -c Release
 dotnet run --project src/FontCrate.App
 ```
 
-生成自包含发布包：
+在 Windows 上安装 [Inno Setup 6.5 或更高版本](https://jrsoftware.org/isdl.php) 后，生成自包含 EXE 安装包与对应源码 ZIP：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/publish.ps1
 ```
+
+安装配置、构建要求与 Windows 验收清单见 [安装版说明](docs/INSTALLER.zh-CN.md)。
 
 ## 作者与许可证
 

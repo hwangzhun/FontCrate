@@ -1,39 +1,75 @@
-param([string]$Output = "$PSScriptRoot/../artifacts")
+param(
+    [string]$Output = "$PSScriptRoot/../artifacts",
+    [string]$IsccPath,
+    [switch]$SkipTests
+)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot/..").Path
 $outputPath = [IO.Path]::GetFullPath($Output)
-$publish = Join-Path $outputPath 'FontCrate-win-x64'
-dotnet test "$root/tests/FontCrate.Tests/FontCrate.Tests.csproj" -c Release
-if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
-dotnet publish "$root/src/FontCrate.App/FontCrate.App.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -o $publish
-if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
-foreach ($required in @('FontCrate.exe', 'Wpf.Ui.dll', 'Wpf.Ui.Abstractions.dll')) {
-    if (-not (Test-Path (Join-Path $publish $required))) { throw "Missing UI dependency: $required" }
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
+    throw 'Installer publishing requires Windows, .NET 10 SDK and Inno Setup 6.5 or newer.'
 }
-Copy-Item "$root/README.zh-CN.md" $publish
-Copy-Item "$root/README.md" $publish
-Copy-Item "$root/LICENSE" $publish
-Copy-Item "$root/THIRD-PARTY-NOTICES.md" $publish
-Copy-Item "$root/licenses" $publish -Recurse -Force
-foreach ($requiredLicense in @('WPF-UI-MIT.txt', 'Fluent-System-Icons-MIT.txt')) {
-    if (-not (Test-Path (Join-Path $publish "licenses/$requiredLicense"))) { throw "Missing license: $requiredLicense" }
-}
-Copy-Item "$root/docs" $publish -Recurse -Force
-$packageRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $HOME '.nuget/packages' }
-foreach ($package in @('microsoft.netcore.app.runtime.win-x64', 'microsoft.windowsdesktop.app.runtime.win-x64')) {
-    $packagePath = Join-Path $packageRoot $package
-    if (-not (Test-Path $packagePath)) { continue }
-    Get-ChildItem $packagePath -Recurse -File | Where-Object { $_.Name -match '^(LICENSE.*|THIRD-PARTY-NOTICES.*)$' } | ForEach-Object {
-        Copy-Item $_.FullName (Join-Path $publish "licenses/$package-$($_.Name)") -Force
+if (-not $IsccPath) {
+    $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($command) { $IsccPath = $command.Source }
+    else {
+        foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+            if (-not $base) { continue }
+            $candidate = Join-Path $base 'Inno Setup 6/ISCC.exe'
+            if (Test-Path $candidate) { $IsccPath = $candidate; break }
+        }
     }
 }
-Compress-Archive -Path "$publish/*" -DestinationPath (Join-Path $outputPath 'FontCrate-win-x64.zip') -Force
-Get-FileHash (Join-Path $outputPath 'FontCrate-win-x64.zip') -Algorithm SHA256
+if (-not $IsccPath -or -not (Test-Path $IsccPath)) {
+    throw 'Inno Setup compiler not found. Install Inno Setup 6.5+ from https://jrsoftware.org/isdl.php or pass -IsccPath.'
+}
 
-# Include the corresponding source alongside each GPL release.
-$sourceStaging = Join-Path ([IO.Path]::GetTempPath()) ("FontCrate-source-" + [Guid]::NewGuid().ToString('N'))
+# Isolate each build so old DLLs, installers and debugging files cannot enter the release.
+$staging = Join-Path ([IO.Path]::GetTempPath()) ("FontCrate-release-" + [Guid]::NewGuid().ToString('N'))
+$publish = Join-Path $staging 'publish'
+$release = Join-Path $staging 'release'
+$sourceStaging = Join-Path $staging 'source'
 try {
-    New-Item -ItemType Directory -Path $sourceStaging -Force | Out-Null
+    New-Item -ItemType Directory -Path $publish, $release, $sourceStaging -Force | Out-Null
+    if (-not $SkipTests) {
+        dotnet test "$root/tests/FontCrate.Tests/FontCrate.Tests.csproj" -c Release
+        if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
+    }
+    dotnet publish "$root/src/FontCrate.App/FontCrate.App.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -p:CopyOutputSymbolsToPublishDirectory=false -o $publish
+    if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
+    foreach ($required in @('FontCrate.exe', 'FontCrate.dll', 'FontCrate.Core.dll', 'FontCrate.Windows.dll', 'Wpf.Ui.dll', 'Wpf.Ui.Abstractions.dll', 'coreclr.dll', 'PresentationFramework.dll', 'e_sqlite3.dll')) {
+        if (-not (Test-Path (Join-Path $publish $required))) { throw "Missing application dependency: $required" }
+    }
+    Get-ChildItem $publish -Filter '*.pdb' -Recurse -File | Remove-Item -Force
+    # Keep Chinese (Simplified and Traditional) and English satellite resources.
+    # English fallback resources are also embedded in the main framework DLLs.
+    Get-ChildItem $publish -Directory | Where-Object {
+        $_.Name -notmatch '^(en|zh)(-|$)' -and
+        (Get-ChildItem $_.FullName -Filter '*.resources.dll' -File)
+    } | Remove-Item -Recurse -Force
+
+    # FontCrate.exe is the native apphost: read the managed assembly identity from
+    # its companion DLL, then require the EXE's version resource to match.
+    $assemblyVersion = [Reflection.AssemblyName]::GetAssemblyName((Join-Path $publish 'FontCrate.dll')).Version
+    $version = $assemblyVersion.ToString(3)
+    $exeVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $publish 'FontCrate.exe'))
+    if ($exeVersion.FileMajorPart -ne $assemblyVersion.Major -or $exeVersion.FileMinorPart -ne $assemblyVersion.Minor -or $exeVersion.FileBuildPart -ne $assemblyVersion.Build) {
+        throw 'Published EXE and managed assembly versions do not match.'
+    }
+    foreach ($name in @('README.zh-CN.md', 'README.md', 'LICENSE')) {
+        Copy-Item (Join-Path $root $name) $publish
+    }
+    foreach ($excluded in @('docs', 'licenses', 'THIRD-PARTY-NOTICES.md')) {
+        $excludedPath = Join-Path $publish $excluded
+        if (Test-Path $excludedPath) { Remove-Item $excludedPath -Recurse -Force }
+    }
+
+    & $IsccPath "/DPublishDir=$publish" "/DOutputDir=$release" "/DAppVersion=$version" "$root/tools/installer/FontCrate.iss"
+    if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+    $installerName = "FontCrate-Setup-$version-win-x64.exe"
+    if (-not (Test-Path (Join-Path $release $installerName))) { throw 'Installer output missing.' }
+
+    # Include corresponding source, including installer scripts and hidden GitHub files.
     $parts = @('src', 'tests', 'tools', 'docs', 'licenses', '.github', '.gitignore', '.gitattributes', 'Directory.Build.props', 'global.json', 'FontCrate.sln', 'README.md', 'README.zh-CN.md', 'THIRD-PARTY-NOTICES.md', 'LICENSE', 'fontcrate.png')
     foreach ($part in $parts) {
         $item = Get-Item (Join-Path $root $part) -Force
@@ -46,10 +82,14 @@ try {
             Copy-Item $file.FullName $target
         }
     }
-    # ZipFile includes hidden .github and Git configuration files on every OS.
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $sourceZip = Join-Path $outputPath 'FontCrate-source.zip'
-    if (Test-Path $sourceZip) { Remove-Item $sourceZip -Force }
-    [IO.Compression.ZipFile]::CreateFromDirectory($sourceStaging, $sourceZip)
+    [IO.Compression.ZipFile]::CreateFromDirectory($sourceStaging, (Join-Path $release 'FontCrate-source.zip'))
+    $hashes = Get-ChildItem $release -File | Get-FileHash -Algorithm SHA256
+    $hashes | ForEach-Object { "$($_.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content (Join-Path $release 'SHA256SUMS.txt') -Encoding ascii
+    # Only completed release files are copied out; staging is never uploaded.
+    New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+    Get-ChildItem $release -File | Copy-Item -Destination $outputPath -Force
+    $hashes | Format-Table
+    Write-Host "Installer: $(Join-Path $outputPath $installerName)"
 }
-finally { Remove-Item $sourceStaging -Recurse -Force -ErrorAction SilentlyContinue }
+finally { Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue }

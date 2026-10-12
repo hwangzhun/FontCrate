@@ -153,19 +153,30 @@ internal static class Program
     {
         var cards = workspace.Children.OfType<Card>().ToArray();
         var contents = cards.Select(c => c.Content).ToArray();
+        // A fresh root avoids the page layout manager restoring old arrange bounds.
+        var isolated = new System.Windows.Controls.Grid();
+        foreach (var column in workspace.ColumnDefinitions)
+            isolated.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            { Width = column.Width, MinWidth = column.MinWidth, MaxWidth = column.MaxWidth });
+        foreach (var card in cards)
+        {
+            workspace.Children.Remove(card);
+            isolated.Children.Add(card);
+        }
         try
         {
             // Exercise the actual WPF-UI card templates without Wine's font shaper.
             foreach (var card in cards) card.Content = new System.Windows.Controls.Grid();
             foreach (var size in new[] { new Size(800, 500), new Size(1200, 760), new Size(800, 500) })
             {
-                workspace.Measure(size);
-                workspace.Arrange(new Rect(size));
+                isolated.Measure(size);
+                isolated.Arrange(new Rect(size));
+                isolated.UpdateLayout();
                 foreach (var card in cards)
                 {
-                    var bounds = card.TransformToAncestor(workspace).TransformBounds(new Rect(card.RenderSize));
+                    var bounds = card.TransformToAncestor(isolated).TransformBounds(new Rect(card.RenderSize));
                     Check(Math.Abs(bounds.Top) < 1 && Math.Abs(bounds.Bottom - size.Height) < 1,
-                        $"{card.Name}: card does not fill its column at {size}");
+                        $"{card.Name}: card bounds {bounds} do not fill workspace {isolated.RenderSize} at {size}");
                     var border = (System.Windows.Controls.Border)card.Template.FindName("ContentBorder", card);
                     Check(Math.Abs(border.ActualHeight - card.ActualHeight) < 1,
                         $"{card.Name}: WPF-UI content border does not fill the card");
@@ -175,6 +186,11 @@ internal static class Program
         finally
         {
             for (int i = 0; i < cards.Length; i++) cards[i].Content = contents[i];
+            foreach (var card in cards)
+            {
+                isolated.Children.Remove(card);
+                workspace.Children.Add(card);
+            }
         }
     }
     private static void VerifyLayout(System.Windows.Controls.Page page, string name)

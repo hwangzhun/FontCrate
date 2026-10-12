@@ -27,7 +27,7 @@ public class IndexTests
     [Fact] public async Task NewerDatabaseVersionIsRejected()
     {
         using var s = new Sandbox(); await s.Repository.InitializeAsync();
-        using (var c = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + Path.Combine(s.Root, "library.db")))
+        using (var c = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(s.Root, "library.db"), Pooling = false }.ToString()))
         { await c.OpenAsync(); using var cmd = c.CreateCommand(); cmd.CommandText = "PRAGMA user_version=99"; await cmd.ExecuteNonQueryAsync(); }
         await Assert.ThrowsAsync<InvalidDataException>(() => s.Repository.InitializeAsync());
     }

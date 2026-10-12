@@ -2,17 +2,19 @@
 
 作者：**Hwangzhun** · 项目许可证：**GNU GPL v3（GPL-3.0-only）** · [GitHub](https://github.com/hwangzhun/FontCrate/)
 
-面向 Windows 11 x64 的轻量字体管理工具，使用 C#、.NET 10、WPF UI 4.3.0、SQLite 与 DirectWrite。它独立实现字体管理功能，不使用 MainType 的 DLL、服务或授权逻辑。
+面向 Windows 10 1809+ / Windows 11 x64 的轻量字体管理工具，使用 C#、.NET 10、WPF UI 4.3.0、SQLite 与 DirectWrite。它独立实现字体管理功能，不使用 MainType 的 DLL、服务或授权逻辑。
 
 ## 当前状态
 
-界面改版代码和新版 Windows 自包含发布包已经生成。Linux 环境完成了 Release 编译（零警告、零错误）和 106 个自动化测试（核心、分类管理状态、主题设置及预览缓存键）；此前完成了 360 个真实字体文件 / 392 个 face 的元数据解析检查。
+界面改版代码和新版 Windows 自包含安装包已经生成。Linux 环境完成了 Release 编译（零警告、零错误）和 106 个自动化测试（核心、分类管理状态、主题设置及预览缓存键）；此前完成了 360 个真实字体文件 / 392 个 face 的元数据解析检查。
 
-**尚未完成 Windows 原生验收**：WPF 界面、DirectWrite/WIC 实际渲染、GDI 跨应用启用、HKCU 安装、Word 兼容性和 Windows 性能指标均需按 `VALIDATION.zh-CN.md` 验证。发布包目前是待验收构建，不应理解为这些检查已经通过。
+**尚未完成 Windows 原生验收**：WPF 界面、DirectWrite/WIC 实际渲染、GDI 跨应用启用、HKCU 安装、Word 兼容性和 Windows 性能指标均需按 [安装版验收清单](INSTALLER.zh-CN.md) 验证。安装包目前是待验收构建，不应理解为这些检查已经通过。
 
 ## 运行
 
-解压 `FontCrate-win-x64.zip`，运行 `FontCrate.exe`。运行时已随包携带，不需要另行安装 .NET，也不要求管理员权限。
+运行 `FontCrate-Setup-<版本>-win-x64.exe` 完成安装，从开始菜单或可选桌面快捷方式启动。默认仅安装到当前用户的 `%LOCALAPPDATA%\Programs\FontCrate`，运行时已随包携带，不需要另行安装 .NET，也不要求管理员权限。
+
+升级或卸载前，请从程序或托盘选择“退出并停用临时字体”。卸载只移除安装文件与快捷方式，字体库、设置、原始字体和已安装到当前用户的字体都会保留。安装包目前未签名，可能出现 SmartScreen 提示；构建与验收步骤见 [安装版说明](INSTALLER.zh-CN.md)。
 
 1. 点击“添加目录”，选择字体所在文件夹；程序会扫描该来源。
 2. 左侧导航提供字体库、来源管理、标签与合集、任务与结果、设置五个页面。字体库顶部按来源、标签、合集、收藏或状态筛选，并搜索字体家族、风格、完整名称及 PostScript 名称；“清除筛选”恢复全部字体。
@@ -49,7 +51,7 @@
 
 ## 开发与构建
 
-在 Windows 上安装 .NET 10 SDK；可使用支持 .NET 10 的 Visual Studio，或直接执行：
+在 Windows 上安装 .NET 10 SDK；生成安装包还需要 Inno Setup 6.5 或更高版本；可使用支持 .NET 10 的 Visual Studio，或直接执行：
 
 ```powershell
 dotnet build FontCrate.sln -c Release

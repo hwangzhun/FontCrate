@@ -45,7 +45,7 @@ public class AnnotationTests
         Assert.Equal(other.Id, Assert.Single(await s.Repository.FaceItemsAsync(face.Id, collections)).Id);
         Assert.Single(await s.Repository.FaceItemsAsync(face.Id, !collections));
         Assert.True(Assert.Single((await s.Repository.QueryAsync(new())).Rows).Favorite); Assert.True(File.Exists(face.Path));
-        using var c = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + Path.Combine(s.Root, "library.db")); await c.OpenAsync();
+        using var c = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(s.Root, "library.db"), Pooling = false }.ToString()); await c.OpenAsync();
         using var cmd = c.CreateCommand();
         cmd.CommandText = collections ? "SELECT COUNT(*) FROM collection_faces WHERE collection_id=$id" : "SELECT COUNT(*) FROM face_tags WHERE tag_id=$id";
         cmd.Parameters.AddWithValue("$id", target.Id); Assert.Equal(0L, await cmd.ExecuteScalarAsync());

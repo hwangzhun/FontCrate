@@ -17,9 +17,27 @@ jobs:
         run: |
           dotnet run --project tools/FontCrate.Verify -c Release -- "$env:WINDIR/Fonts/arial.ttf"
           if ($LASTEXITCODE -ne 0) { throw 'Native render verification failed' }
-      - run: ./tools/publish.ps1
+      - name: Build current-user EXE installer
+        run: ./tools/publish.ps1 -SkipTests
         shell: pwsh
+      - name: Installer smoke tests
+        shell: pwsh
+        run: |
+          $installer = @(Get-ChildItem artifacts/FontCrate-Setup-*-win-x64.exe)
+          if ($installer.Count -ne 1) { throw 'Expected exactly one installer.' }
+          ./tools/test-installer.ps1 -Installer $installer[0].FullName
       - uses: actions/upload-artifact@v4
         with:
-          name: FontCrate-win-x64
-          path: artifacts/
+          name: FontCrate-installer-win-x64
+          if-no-files-found: error
+          path: |
+            artifacts/FontCrate-Setup-*-win-x64.exe
+            artifacts/FontCrate-source.zip
+            artifacts/SHA256SUMS.txt
+      - name: Upload installer test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FontCrate-installer-test-logs
+          if-no-files-found: ignore
+          path: artifacts/installer-test-logs/
