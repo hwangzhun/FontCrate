@@ -1,0 +1,41 @@
+<Page ScrollViewer.CanContentScroll="False" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="FontCrate.App.Views.TasksPage" Title="任务与结果" Background="{DynamicResource ApplicationBackgroundBrush}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontFamily="Microsoft YaHei UI" FontSize="13">
+  <Grid Margin="24,12,24,0">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,20">
+      <TextBlock Text="任务与结果" FontSize="28" FontWeight="SemiBold" />
+      <TextBlock Text="查看本次会话的最近任务和结果。任务执行时在进度弹窗中查看或取消。" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap" />
+    </StackPanel>
+    <Grid Grid.Row="1" Margin="0,0,0,16">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="16" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <ui:Card Padding="16" HorizontalContentAlignment="Stretch">
+        <ContentControl Content="{Binding ScanProgress}" ContentTemplate="{StaticResource TaskProgressTemplate}" />
+      </ui:Card>
+      <ui:Card Grid.Column="2" Padding="16" HorizontalContentAlignment="Stretch">
+        <ContentControl Content="{Binding OperationProgress}" ContentTemplate="{StaticResource TaskProgressTemplate}" />
+      </ui:Card>
+    </Grid>
+    <WrapPanel Grid.Row="2" Margin="0,0,0,12">
+      <ui:Button Content="扫描错误" Command="{Binding ShowErrorsCommand}" Margin="0,0,8,8" />
+      <ui:Button Content="核对与恢复状态" Command="{Binding RecoverCommand}" Margin="0,0,8,8" />
+    </WrapPanel>
+    <ui:Card Grid.Row="3" Padding="16" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="最近结果" Style="{StaticResource Heading}" Margin="0,0,0,12" />
+        <ui:TextBox Grid.Row="1" Text="{Binding ResultText, Mode=OneWay}" PlaceholderText="尚无结果。任务完成后将在这里显示。" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="最近操作结果" />
+      </Grid>
+    </ui:Card>
+  </Grid>
+</Page>

@@ -1,0 +1,38 @@
+<UserControl x:Class="FontCrate.App.Views.ManagementFontBrowser" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid Margin="0,0,0,10">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <ui:TextBox Text="{Binding FontSearch, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{Binding SearchPlaceholder}" AutomationProperties.Name="搜索字体" Margin="0,0,12,0"/>
+      <ui:TextBlock Grid.Column="1" Text="{Binding FontCountText}" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontTypography="Caption"/>
+    </Grid>
+    <StackPanel Grid.Row="1">
+      <ui:TextBlock Text="{Binding Error}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+      <ProgressBar IsIndeterminate="True" Height="3" Margin="0,0,0,8" Visibility="{Binding Loading, Converter={StaticResource BoolVisibility}}"/>
+    </StackPanel>
+    <Grid Grid.Row="2" MinHeight="120">
+      <ui:ListView x:Name="FontList" ItemsSource="{Binding Fonts}" SelectionMode="Extended" SelectionChanged="SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.CacheLength="0" AutomationProperties.Name="关联字体列表">
+        <ui:ListView.ItemContainerStyle><Style TargetType="ui:ListViewItem" BasedOn="{StaticResource {x:Type ui:ListViewItem}}"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ui:ListView.ItemContainerStyle>
+        <ui:ListView.ItemTemplate><DataTemplate>
+          <Grid Margin="4,6" ToolTip="{Binding Status}">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions>
+            <Image Width="80" Height="42" Stretch="Uniform" Loaded="ThumbnailLoaded" Unloaded="ThumbnailUnloaded" DataContextChanged="ThumbnailChanged"/>
+            <StackPanel Grid.Column="1" Margin="8,0">
+              <ui:TextBlock Text="{Binding FullName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding FullName}"/>
+              <ui:TextBlock Text="{Binding Style}" FontTypography="Caption" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+              <ui:TextBlock Text="{Binding Status}" FontTypography="Caption" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            <ui:TextBlock Grid.Column="2" Text="{Binding FileType}" VerticalAlignment="Center" FontTypography="Caption" HorizontalAlignment="Right"/>
+          </Grid>
+        </DataTemplate></ui:ListView.ItemTemplate>
+      </ui:ListView>
+      <ui:TextBlock Text="暂无字体，可调整搜索或添加字体。" IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Visibility="{Binding NoFonts, Converter={StaticResource BoolVisibility}}"/>
+    </Grid>
+    <ui:Card Grid.Row="3" Padding="12" Margin="0,12,0,0" HorizontalContentAlignment="Stretch">
+      <StackPanel>
+        <ui:TextBlock Text="{Binding PreviewMessage}" FontTypography="Caption" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+        <Image Source="{Binding PreviewImage}" Height="64" Stretch="Uniform" HorizontalAlignment="Left" Margin="0,6,0,0"/>
+      </StackPanel>
+    </ui:Card>
+  </Grid>
+</UserControl>

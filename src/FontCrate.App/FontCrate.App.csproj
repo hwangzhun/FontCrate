@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>FontCrate</AssemblyName>
+    <RootNamespace>FontCrate.App</RootNamespace>
+    <Product>FontCrate</Product>
+    <Authors>Hwangzhun</Authors>
+    <Copyright>Copyright (C) 2026 Hwangzhun</Copyright>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/hwangzhun/FontCrate/</RepositoryUrl>
+    <Title>FontCrate</Title>
+    <Description>轻量字体管理工具：扫描、预览、分类和临时启用字体。</Description>
+    <ApplicationIcon>Assets/FontCrate.ico</ApplicationIcon>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets/FontCrate.png" />
+    <Resource Include="Assets/FontCrate.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FontCrate.Windows/FontCrate.Windows.csproj" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+    <Content Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

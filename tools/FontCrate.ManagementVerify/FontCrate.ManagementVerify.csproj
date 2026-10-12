@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+  <ItemGroup><EmbeddedResource Include="../../src/FontCrate.App/App.xaml" LogicalName="AppResources.xaml" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../src/FontCrate.App/FontCrate.App.csproj" /></ItemGroup>
+</Project>
