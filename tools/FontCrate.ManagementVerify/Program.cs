@@ -45,11 +45,9 @@ internal static class Program
             var source = await repo.AddSourceAsync(folder); await scanner.ScanAsync(source, false, null, default);
         }
         var sources = await repo.SourcesAsync(); var faces = (await repo.QueryAsync(new())).Rows;
-        var alpha = await repo.CreateNamedItemAsync("Alpha", false); var beta = await repo.CreateNamedItemAsync("Beta", false);
-        var group = await repo.CreateNamedItemAsync("Group", true);
-        await repo.AnnotateByIdAsync([faces[0].Id], alpha.Id, false);
-        await repo.AnnotateByIdAsync([faces[1].Id], beta.Id, false);
-        await repo.AnnotateByIdAsync([faces[0].Id], group.Id, true);
+        var alpha = await repo.CreateNamedItemAsync("Alpha"); var beta = await repo.CreateNamedItemAsync("Beta");
+        await repo.AnnotateByIdAsync([faces[0].Id], alpha.Id);
+        await repo.AnnotateByIdAsync([faces[1].Id], beta.Id);
         using var previews = new TestPreview(); var dialogs = new ConfirmationService();
         var owner = new MainViewModel(repo, scanner, previews, new FontOperations(repo, new TestPlatform(root)), Dispatcher.CurrentDispatcher, dialogs);
         await owner.InitializeAsync();
@@ -58,18 +56,17 @@ internal static class Program
         owner.Search = "unrelated library search";
         using var sourceManager = new SourcesManagementViewModel(owner, dialogs, () => { });
         using var categories = new AnnotationsManagementViewModel(owner, dialogs, () => { });
-        await sourceManager.RefreshAsync(); await categories.Tags.RefreshAsync(); await categories.Collections.RefreshAsync();
+        await sourceManager.RefreshAsync(); await categories.Tags.RefreshAsync();
         sourceManager.SelectedSource = sourceManager.Sources.Single(s => s.Id == sources[1].Id); await sourceManager.LoadFontsAsync();
         categories.Tags.SelectedItem = categories.Tags.Items.Single(i => i.Id == alpha.Id); await categories.Tags.LoadFontsAsync();
-        Check(categories.Tags.Fonts.Count == 1 && categories.Collections.Fonts.Count == 1, "Independent association query failed");
+        Check(categories.Tags.Fonts.Count == 1, "Independent association query failed");
         Check(owner.SelectedSource.Id == sources[0].Id && owner.TagPanel.SelectedFilter.Id == beta.Id && owner.Search.StartsWith("unrelated"), "Management changed library filters");
         Console.WriteLine("PASS independent source/category filters and association lists");
         categories.Tags.SetSelection([categories.Tags.Fonts[0]], categories.Tags.Fonts[0]);
-        await repo.AnnotateByIdAsync([faces[1].Id, faces[1].Id], alpha.Id, false);
+        await repo.AnnotateByIdAsync([faces[1].Id, faces[1].Id], alpha.Id);
         await categories.Tags.RefreshAsync(); await Task.Delay(250);
         Check(categories.Tags.Fonts.Count == 2 && categories.Tags.SelectedFonts.Single().Id == faces[0].Id, "Refresh lost selection or duplicated membership");
         Check(owner.TagPanel.Items.Single(i => i.Id == alpha.Id).FaceCount == 2, "Library classification count did not refresh");
-        Check(categories.Collections.Fonts.Count == 1, "Tag changes affected collections");
         Console.WriteLine("PASS cross-page counts, idempotent membership and stable selected fonts");
         categories.Tags.SelectedItem = categories.Tags.Items.Single(i => i.Id == alpha.Id);
         var stale = categories.Tags.LoadFontsAsync();
@@ -78,6 +75,14 @@ internal static class Program
         Check(categories.Tags.Fonts.Single().Id == faces[1].Id, "Stale query overwrote current category");
         using (var picker = new FontPickerViewModel(owner, faces.Select(f => f.Id).ToHashSet()))
         { await picker.RefreshAsync(); Check(picker.Fonts.Count == 0, "Picker included existing members"); }
+        var disposedPicker = new FontPickerViewModel(owner, []);
+        disposedPicker.SetSelection([faces[0]], faces[0]);
+        disposedPicker.Dispose();
+        // WPF may deliver Unloaded after ContentDialog.ShowAsync has completed.
+        // This sequence used to cancel an already disposed CancellationTokenSource.
+        disposedPicker.SuspendPreview(); disposedPicker.ResumePreview(); disposedPicker.Dispose();
+        await disposedPicker.LoadFontsAsync();
+        Console.WriteLine("PASS late preview lifecycle callbacks after picker disposal");
         Console.WriteLine("PASS rapid category changes and exclusion of existing members");
         File.WriteAllText(Path.Combine(sources[0].Path, "Unscanned.ttf"), "unscanned");
         File.WriteAllText(Path.Combine(sources[1].Path, "New.ttf"), "new");
@@ -89,6 +94,7 @@ internal static class Program
         Console.WriteLine("PASS MainViewModel explicit source scan and preserved library selection");
         using var theme = new ThemeService(new SettingsStore(Path.Combine(root, "settings.json")));
         var window = new MainWindow(owner, theme, dialogs);
+        if (verifyLayout) window.Show();
         using var sourcePage = new SourcesPage(owner, dialogs, () => { });
         using var categoryPage = new AnnotationsPage(owner, dialogs, () => { });
         var browser = new ManagementFontBrowser();
@@ -98,15 +104,13 @@ internal static class Program
         {
             VerifyLayout(sourcePage, "sources");
             VerifyLayout(categoryPage, "tags");
-            Descendants(categoryPage).OfType<TabView>().Single().SelectedIndex = 1;
-            VerifyLayout(categoryPage, "collections");
             Console.WriteLine("PASS full-height aligned management panes at compact and large sizes");
         }
         else Console.WriteLine("SKIP visual layout checks (--skip-layout; requires working WPF font rendering)");
         ContentDialog ActiveDialog() => (ContentDialog)typeof(ConfirmationService).GetField("active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(dialogs)!;
         int saves = 0;
         var editing = ManagementDialogs.EditNameAsync(dialogs, "Test name", "", async name =>
-        { await repo.CreateNamedItemAsync(name, false); saves++; });
+        { await repo.CreateNamedItemAsync(name); saves++; });
         var editDialog = ActiveDialog();
         editDialog.TemplateButtonCommand.Execute(ContentDialogButton.Primary);
         await Task.Delay(50);
@@ -123,6 +127,76 @@ internal static class Program
         ActiveDialog().TemplateButtonCommand.Execute(ContentDialogButton.Primary);
         Check(!picking.IsCompleted, "Empty font selection closed the picker");
         dialogs.Cancel(); Check((await picking).Length == 0, "Canceled font picker returned selected fonts");
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            var accepted = ManagementDialogs.ChooseFontsAsync(dialogs, owner, [], "Lifecycle regression");
+            for (int i = 0; i < 100 && !dialogs.IsOpen; i++) await Task.Delay(10);
+            Check(dialogs.IsOpen, "Repeated font picker failed to open");
+            var pickerDialog = ActiveDialog();
+            var pickerBrowser = (ManagementFontBrowser)pickerDialog.Content;
+            var pickerModel = (FontPickerViewModel)pickerBrowser.DataContext;
+            var pickerList = (Wpf.Ui.Controls.ListView)pickerBrowser.FindName("FontList");
+            pickerList.SelectedItems.Add(pickerModel.Fonts.Single(f => f.Id == faces[0].Id));
+            pickerDialog.TemplateButtonCommand.Execute(ContentDialogButton.Primary);
+            var selectedIds = await accepted;
+            Check(selectedIds.SequenceEqual(new[] { faces[0].Id }), "Picker lost accepted selection");
+            Check(pickerBrowser.DataContext is null, "Completed picker retained a disposed model");
+            pickerBrowser.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+            pickerModel.SuspendPreview();
+            await repo.AnnotateByIdAsync(selectedIds, beta.Id);
+            await categories.Tags.RefreshAsync();
+            Check((await repo.QueryAsync(new(TagId: beta.Id))).Rows.Count == 2, "Accepted fonts were not saved exactly once");
+        }
+        owner.ClearFiltersCommand.Execute(null);
+        owner.SelectedFaces = faces;
+        await owner.AddSelectionToTagAsync(beta.Id);
+        Check(owner.TagPanel.Items.Single(t => t.Id == beta.Id).FaceCount == 2, "Library batch assignment did not refresh tag counts");
+        Check(owner.SelectedFaces.Select(f => f.Id).ToHashSet().SetEquals(faces.Select(f => f.Id)), "Library assignment lost multi-selection");
+        await owner.AddSelectionToTagAsync(long.MaxValue);
+        Check(owner.Status.Contains("已不存在"), "Invalid tag failed without visible feedback");
+        var beforeNewTag = (await repo.NamedItemsAsync()).Count;
+        var canceledNewTag = owner.NewTagForSelectionAsync();
+        dialogs.Cancel(); await canceledNewTag;
+        Check((await repo.NamedItemsAsync()).Count == beforeNewTag, "Canceled library tag creation wrote data");
+        var newLibraryTag = owner.NewTagForSelectionAsync();
+        var newTagDialog = ActiveDialog();
+        ((Wpf.Ui.Controls.TextBox)((System.Windows.Controls.StackPanel)newTagDialog.Content).Children[1]).Text = "Library selection";
+        newTagDialog.TemplateButtonCommand.Execute(ContentDialogButton.Primary); await newLibraryTag;
+        Check((await repo.NamedItemCountsAsync()).Single(t => t.Name == "Library selection").FaceCount == 2,
+            "Library new-tag action did not attach the selected fonts");
+        if (verifyLayout)
+        {
+            // Measure a standalone page: hosted window sizes can be constrained by the runner monitor.
+            var libraryPage = new FontLibraryPage(owner);
+            var workspace = (System.Windows.Controls.Grid)libraryPage.FindName("LibraryWorkspace");
+            Check(workspace.ColumnDefinitions[0].Width == new GridLength(7, GridUnitType.Star) &&
+                workspace.ColumnDefinitions[2].Width == new GridLength(3, GridUnitType.Star), "Library does not default to 70/30");
+            libraryPage.Measure(new Size(1600, 900));
+            libraryPage.Arrange(new Rect(new Size(1600, 900))); libraryPage.UpdateLayout();
+            double contentWidth = workspace.ActualWidth - workspace.ColumnDefinitions[1].ActualWidth;
+            Check(Math.Abs(workspace.ColumnDefinitions[2].ActualWidth / contentWidth - .3) < .01, $"Library preview is not 30% at a wide size: {workspace.ColumnDefinitions[2].ActualWidth}/{contentWidth}");
+            libraryPage.Measure(new Size(1050, 700));
+            libraryPage.Arrange(new Rect(new Size(1050, 700))); libraryPage.UpdateLayout();
+            Check(workspace.ColumnDefinitions[0].ActualWidth >= 320 && workspace.ColumnDefinitions[2].ActualWidth >= 320,
+                "Library panes violate minimum widths");
+            Check(workspace.Children.OfType<System.Windows.Controls.GridSplitter>().Any(), "Library splitter was removed");
+            var fontList = (System.Windows.Controls.DataGrid)libraryPage.FindName("FontList");
+            fontList.SelectedItems.Clear();
+            fontList.SelectedItems.Add(fontList.Items[0]); fontList.SelectedItems.Add(fontList.Items[1]);
+            fontList.ScrollIntoView(fontList.Items[1]); fontList.UpdateLayout();
+            var selectedRow = (System.Windows.Controls.DataGridRow)fontList.ItemContainerGenerator.ContainerFromItem(fontList.Items[1]);
+            selectedRow.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Right)
+                { RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent });
+            Check(fontList.SelectedItems.Count == 2, "Right-click on selected row lost multi-selection");
+            fontList.ScrollIntoView(fontList.Items[2]); fontList.UpdateLayout();
+            var otherRow = (System.Windows.Controls.DataGridRow)fontList.ItemContainerGenerator.ContainerFromItem(fontList.Items[2]);
+            otherRow.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Right)
+                { RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent });
+            Check(fontList.SelectedItems.Count == 1 && Equals(fontList.SelectedItem, fontList.Items[2]),
+                "Right-click on unselected row did not replace selection");
+            Console.WriteLine("PASS library 70/30 layout, compact widths and right-click selection");
+        }
+        Console.WriteLine("PASS accepted picker teardown, repeated tagging and library batch assignment");
         var writeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finishWrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var canceledSave = ManagementDialogs.EditNameAsync(dialogs, "Cancel pending save", "Pending", async _ =>
@@ -134,20 +208,27 @@ internal static class Program
         var canceledLoading = ManagementDialogs.ChooseFontsAsync(dialogs, owner, [], "Canceled while loading");
         dialogs.Cancel(); Check((await canceledLoading).Length == 0 && !dialogs.IsOpen, "Canceled loading reopened a picker");
         Console.WriteLine("PASS native dialog name validation, successful save and canceled/empty font selection");
-        window.Close(); await owner.ShutdownAsync();
+        Check(AppAssets.ReadLegalText("LICENSE").Contains("GNU GENERAL PUBLIC LICENSE"), "Embedded GPL license missing");
+        Check(AppAssets.ReadLegalText("NOTICES.txt").Contains("WPF"), "Embedded third-party notices missing");
+        window.Close();
+        // Regression: the user's trace showed UnWatch throwing after HWND destruction.
+        theme.Dispose(); theme.Dispose();
+        sourcePage.Dispose(); categoryPage.Dispose(); sourceManager.Dispose(); categories.Dispose();
+        await owner.ShutdownAsync();
         // Clear only this verifier's pool before removing its isolated database.
         var cs = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "library.db"), ForeignKeys = true }.ToString();
-        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection(cs)) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(connection);
-        Directory.Delete(root, true);
+
         VerifyPaneGeometry((System.Windows.Controls.Grid)sourcePage.FindName("Workspace"));
-        var categoryTabs = (TabView)categoryPage.FindName("CategoryTabs");
-        Check(ReferenceEquals(categoryTabs.Style, categoryTabs.FindResource(typeof(System.Windows.Controls.TabControl))), "Category tabs do not use the WPF-UI TabControl style");
-        foreach (var tab in categoryTabs.Items.OfType<TabViewItem>())
-            Check(ReferenceEquals(tab.Style, tab.FindResource(typeof(System.Windows.Controls.TabItem))), "Category tab header does not use the WPF-UI TabItem style");
-        Console.WriteLine("PASS WPF-UI tab control and header styles");
-        foreach (var tab in categoryTabs.Items.OfType<TabViewItem>())
-            VerifyPaneGeometry((System.Windows.Controls.Grid)((CategoryManagementControl)tab.Content).FindName("Workspace"));
-        Console.WriteLine("PASS source, tag and collection card geometry without font rendering");
+        var tagControl = (CategoryManagementControl)categoryPage.FindName("TagManagement");
+        VerifyPaneGeometry((System.Windows.Controls.Grid)tagControl.FindName("Workspace"));
+        Console.WriteLine("PASS source and tag card geometry without font rendering");
+        // Let already-started asynchronous reads finish after disposing their subscribers.
+        for (int attempt = 0; ; attempt++)
+        {
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection(cs)) Microsoft.Data.Sqlite.SqliteConnection.ClearPool(connection);
+            try { Directory.Delete(root, true); break; }
+            catch (IOException) when (attempt < 20) { await Task.Delay(100); }
+        }
     }
     private static void VerifyPaneGeometry(System.Windows.Controls.Grid workspace)
     {

@@ -12,7 +12,7 @@
       <ui:Card x:Name="ListCard" Padding="16" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid>
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-          <ui:TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="搜索分类名称" AutomationProperties.Name="搜索标签或合集" Margin="0,0,0,12"/>
+          <ui:TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="搜索分类名称" AutomationProperties.Name="搜索标签" Margin="0,0,0,12"/>
           <Grid Grid.Row="1">
             <ui:ListView SelectionMode="Single" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" AutomationProperties.Name="分类列表">
               <ui:ListView.ItemContainerStyle><Style TargetType="ui:ListViewItem" BasedOn="{StaticResource {x:Type ui:ListViewItem}}"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ui:ListView.ItemContainerStyle>
@@ -45,7 +45,8 @@
           <WrapPanel Grid.Row="1" Margin="0,0,0,12">
             <ui:Button Content="添加字体" Icon="{ui:SymbolIcon Add24}" Command="{Binding AddFontsCommand}" Margin="0,0,8,8"/>
             <ui:Button Content="移除所选关联" Command="{Binding RemoveFontsCommand}" Margin="0,0,8,8"/>
-            <ui:Button Content="在字体库查看" Command="{Binding ViewCommand}" Margin="0,0,0,8"/>
+            <ui:Button Content="在字体库查看" Command="{Binding ViewCommand}" Margin="0,0,8,8"/>
+            <ui:Button Content="导出全部字体…" Command="{Binding ExportCommand}" Margin="0,0,0,8"/>
           </WrapPanel>
           <views:ManagementFontBrowser Grid.Row="2"/>
         </Grid>

@@ -19,7 +19,6 @@
         <WrapPanel>
           <ComboBox ItemsSource="{Binding SourceItems}" SelectedItem="{Binding SelectedSource}" DisplayMemberPath="Name" Width="190" Margin="0,0,8,8" AutomationProperties.Name="来源筛选" ToolTip="{Binding SelectedSource.Name}" />
           <ComboBox ItemsSource="{Binding TagPanel.FilterItems}" SelectedItem="{Binding TagPanel.SelectedFilter}" DisplayMemberPath="Name" Width="140" Margin="0,0,8,8" AutomationProperties.Name="标签筛选" />
-          <ComboBox ItemsSource="{Binding CollectionPanel.FilterItems}" SelectedItem="{Binding CollectionPanel.SelectedFilter}" DisplayMemberPath="Name" Width="140" Margin="0,0,8,8" AutomationProperties.Name="合集筛选" />
           <ComboBox ItemsSource="{Binding States}" SelectedItem="{Binding State}" Width="125" Margin="0,0,12,8" AutomationProperties.Name="字体状态筛选" />
           <CheckBox Content="只看收藏" IsChecked="{Binding FavoritesOnly}" Margin="0,5,12,8" />
           <ui:Button Content="清除筛选" Command="{Binding ClearFiltersCommand}" Margin="0,0,0,8" />
@@ -27,11 +26,11 @@
         <TextBlock Text="{Binding FilterSummary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding FilterSummary}" FontSize="11" />
       </StackPanel>
     </Border>
-    <Grid Grid.Row="1">
+    <Grid x:Name="LibraryWorkspace" Grid.Row="1">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" MinWidth="320" />
+        <ColumnDefinition Width="7*" MinWidth="320" />
         <ColumnDefinition Width="12" />
-        <ColumnDefinition Width="*" MinWidth="320" />
+        <ColumnDefinition Width="3*" MinWidth="320" />
       </Grid.ColumnDefinitions>
       <Border Grid.Column="0" Style="{StaticResource Panel}" Padding="12">
         <DockPanel>
@@ -65,10 +64,9 @@
                 <ui:Button Content="卸载已安装字体" ToolTip="仅卸载由本工具持久安装到当前用户的字体。" Command="{Binding UninstallCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon Delete24}" />
                 <ui:Button Content="收藏" Command="{Binding FavoriteCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon Star24}" />
               </WrapPanel>
-              <Expander Header="标签与合集" Margin="2,3,2,10">
+              <Expander Header="标签" Margin="2,3,2,10">
                 <StackPanel Margin="0,10,0,0">
                   <ContentControl Content="{Binding TagPanel}" ContentTemplate="{StaticResource AnnotationAssignmentTemplate}" />
-                  <ContentControl Content="{Binding CollectionPanel}" ContentTemplate="{StaticResource AnnotationAssignmentTemplate}" Margin="0,6,0,0" />
                 </StackPanel>
               </Expander>
             </StackPanel>

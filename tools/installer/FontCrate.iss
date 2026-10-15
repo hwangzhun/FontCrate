@@ -68,7 +68,36 @@ chinesesimplified.AppRunning=FontCrate 仍在运行。请在程序或托盘菜�
 Name: "desktopicon"; Description: "{cm:DesktopShortcut}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\FontCrate.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; Previous releases deployed these application files beside the EXE.
+Type: files; Name: "{app}\*.dll"
+Type: files; Name: "{app}\*.pdb"
+Type: files; Name: "{app}\*.md"
+Type: files; Name: "{app}\FontCrate.deps.json"
+Type: files; Name: "{app}\FontCrate.runtimeconfig.json"
+Type: files; Name: "{app}\LICENSE"
+Type: files; Name: "{app}\createdump.exe"
+
+; Old framework satellite folders; current resources are inside the EXE.
+Type: filesandordirs; Name: "{app}\cs"
+Type: filesandordirs; Name: "{app}\de"
+Type: filesandordirs; Name: "{app}\en"
+Type: filesandordirs; Name: "{app}\en-US"
+Type: filesandordirs; Name: "{app}\es"
+Type: filesandordirs; Name: "{app}\fr"
+Type: filesandordirs; Name: "{app}\it"
+Type: filesandordirs; Name: "{app}\ja"
+Type: filesandordirs; Name: "{app}\ko"
+Type: filesandordirs; Name: "{app}\pl"
+Type: filesandordirs; Name: "{app}\pt-BR"
+Type: filesandordirs; Name: "{app}\ru"
+Type: filesandordirs; Name: "{app}\tr"
+Type: filesandordirs; Name: "{app}\zh-CN"
+Type: filesandordirs; Name: "{app}\zh-TW"
+Type: filesandordirs; Name: "{app}\zh-Hans"
+Type: filesandordirs; Name: "{app}\zh-Hant"
 
 [Icons]
 Name: "{userprograms}\FontCrate"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"

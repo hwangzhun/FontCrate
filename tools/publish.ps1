@@ -35,34 +35,27 @@ try {
         dotnet test "$root/tests/FontCrate.Tests/FontCrate.Tests.csproj" -c Release
         if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
     }
-    dotnet publish "$root/src/FontCrate.App/FontCrate.App.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -p:CopyOutputSymbolsToPublishDirectory=false -o $publish
+    $manifest = Join-Path $staging 'bundle-manifest.txt'
+    dotnet publish "$root/src/FontCrate.App/FontCrate.App.csproj" -c Release -p:PublishProfile=WinX64 -p:DebugType=embedded "-p:BundleManifestPath=$manifest" -o $publish
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
-    foreach ($required in @('FontCrate.exe', 'FontCrate.dll', 'FontCrate.Core.dll', 'FontCrate.Windows.dll', 'Wpf.Ui.dll', 'Wpf.Ui.Abstractions.dll', 'coreclr.dll', 'PresentationFramework.dll', 'e_sqlite3.dll')) {
-        if (-not (Test-Path (Join-Path $publish $required))) { throw "Missing application dependency: $required" }
+    $payload = @(Get-Content $manifest | ForEach-Object { $_.Replace('\', '/') })
+    foreach ($required in @('FontCrate.dll', 'FontCrate.Core.dll', 'FontCrate.Windows.dll', 'Wpf.Ui.dll', 'Wpf.Ui.Abstractions.dll', 'System.Private.CoreLib.dll', 'PresentationFramework.dll', 'e_sqlite3.dll', 'zh-Hans/PresentationFramework.resources.dll', 'FontCrate.runtimeconfig.json')) {
+        if ($payload -notcontains $required) { throw "Dependency missing from single-file bundle: $required" }
     }
-    Get-ChildItem $publish -Filter '*.pdb' -Recurse -File | Remove-Item -Force
-    # Keep Chinese (Simplified and Traditional) and English satellite resources.
-    # English fallback resources are also embedded in the main framework DLLs.
-    Get-ChildItem $publish -Directory | Where-Object {
-        $_.Name -notmatch '^(en|zh)(-|$)' -and
-        (Get-ChildItem $_.FullName -Filter '*.resources.dll' -File)
-    } | Remove-Item -Recurse -Force
-
-    # FontCrate.exe is the native apphost: read the managed assembly identity from
-    # its companion DLL, then require the EXE's version resource to match.
-    $assemblyVersion = [Reflection.AssemblyName]::GetAssemblyName((Join-Path $publish 'FontCrate.dll')).Version
-    $version = $assemblyVersion.ToString(3)
+    foreach ($resource in @($payload | Where-Object { $_ -like '*.resources.dll' })) {
+        if ($resource -notmatch '^(en|zh-Hans)/') { throw "Unexpected bundled language: $resource" }
+    }
+    if ($payload | Where-Object { $_ -like '*.md' }) { throw 'Markdown entered the bundle.' }
+    # Fail if the publish profile ever starts leaking sidecar DLLs or resources.
+    $publishedFiles = @(Get-ChildItem $publish -File -Recurse)
+    if ($publishedFiles.Count -ne 1 -or $publishedFiles[0].Name -ne 'FontCrate.exe') {
+        throw 'Expected a single FontCrate.exe with no sidecar files.'
+    }
     $exeVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $publish 'FontCrate.exe'))
-    if ($exeVersion.FileMajorPart -ne $assemblyVersion.Major -or $exeVersion.FileMinorPart -ne $assemblyVersion.Minor -or $exeVersion.FileBuildPart -ne $assemblyVersion.Build) {
-        throw 'Published EXE and managed assembly versions do not match.'
-    }
-    foreach ($name in @('README.zh-CN.md', 'README.md', 'LICENSE')) {
-        Copy-Item (Join-Path $root $name) $publish
-    }
-    foreach ($excluded in @('docs', 'licenses', 'THIRD-PARTY-NOTICES.md')) {
-        $excludedPath = Join-Path $publish $excluded
-        if (Test-Path $excludedPath) { Remove-Item $excludedPath -Recurse -Force }
-    }
+    $version = '{0}.{1}.{2}' -f $exeVersion.FileMajorPart, $exeVersion.FileMinorPart, $exeVersion.FileBuildPart
+    # Used by the installer license page; the [Files] whitelist installs only the EXE.
+    # The application reads its own license and third-party notices from embedded resources.
+    Copy-Item (Join-Path $root 'LICENSE') $publish
 
     & $IsccPath "/DPublishDir=$publish" "/DOutputDir=$release" "/DAppVersion=$version" "$root/tools/installer/FontCrate.iss"
     if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }

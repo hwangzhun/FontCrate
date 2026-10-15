@@ -8,11 +8,11 @@ public class IndexTests
     [Fact] public async Task FiltersAndBatchAnnotationRemovalAreIndependent()
     {
         using var s = new Sandbox(); var row = await s.IndexAsync();
-        await s.Repository.AnnotateAsync([row.Id], "Tag", false); await s.Repository.AnnotateAsync([row.Id], "Group", true);
-        long tag = (await s.Repository.NamedItemsAsync(false)).Single().Id, group = (await s.Repository.NamedItemsAsync(true)).Single().Id;
-        Assert.Single((await s.Repository.QueryAsync(new(TagId: tag, CollectionId: group))).Rows);
-        await s.Repository.AnnotateAsync([row.Id], "Tag", false, true);
-        Assert.Empty((await s.Repository.QueryAsync(new(TagId: tag))).Rows); Assert.Single((await s.Repository.QueryAsync(new(CollectionId: group))).Rows);
+        await s.Repository.AnnotateAsync([row.Id], "Tag"); await s.Repository.AnnotateAsync([row.Id], "Group");
+        var tags = await s.Repository.NamedItemsAsync(); long tag = tags.Single(t => t.Name == "Tag").Id, group = tags.Single(t => t.Name == "Group").Id;
+        Assert.Single((await s.Repository.QueryAsync(new(TagId: tag))).Rows);
+        await s.Repository.AnnotateAsync([row.Id], "Tag", true);
+        Assert.Empty((await s.Repository.QueryAsync(new(TagId: tag))).Rows); Assert.Single((await s.Repository.QueryAsync(new(TagId: group))).Rows);
     }
     [Fact] public async Task OverlappingSourcesDoNotCountOnePathAsDuplicate()
     {
@@ -61,15 +61,15 @@ public class IndexTests
     [Fact] public async Task MovingAndDuplicatingContentPreservesAnnotations()
     {
         using var s = new Sandbox(); var face = await s.IndexAsync();
-        await s.Repository.SetFavoriteAsync([face.Id], true); await s.Repository.AnnotateAsync([face.Id], "中文", false);
-        await s.Repository.AnnotateAsync([face.Id], "项目 A", true);
+        await s.Repository.SetFavoriteAsync([face.Id], true); await s.Repository.AnnotateAsync([face.Id], "中文");
+        await s.Repository.AnnotateAsync([face.Id], "项目 A");
         File.Move(Path.Combine(s.Fonts, "test.ttf"), Path.Combine(s.Fonts, "moved.ttf"));
         File.Copy(Path.Combine(s.Fonts, "moved.ttf"), Path.Combine(s.Fonts, "duplicate.otf"));
         var source = (await s.Repository.SourcesAsync()).Single(); await new Scanner(s.Repository, new SfntParser()).ScanAsync(source, false, null, default);
         var row = (await s.Repository.QueryAsync(new(State: "完全重复"))).Rows.Single();
         Assert.Equal(face.Id, row.Id); Assert.True(row.Favorite); Assert.Equal(2, row.Locations);
-        Assert.Equal("中文", (await s.Repository.FaceItemsAsync(row.Id, false)).Single().Name);
-        Assert.Equal("项目 A", (await s.Repository.FaceItemsAsync(row.Id, true)).Single().Name);
+        Assert.Equal("中文", (await s.Repository.FaceItemsAsync(row.Id)).Single(t => t.Name == "中文").Name);
+        Assert.Equal("项目 A", (await s.Repository.FaceItemsAsync(row.Id)).Single(t => t.Name == "项目 A").Name);
     }
     [Fact] public async Task BadFontDoesNotStopOtherFilesAndMissingPathsOnlyChangeAfterCompleteScan()
     {
@@ -122,9 +122,9 @@ public class IndexTests
         Assert.Equal(10000, (await s.Repository.QueryAsync(new(SourceId: source.Id))).Rows.Count);
         await s.Repository.SetFavoriteAsync(a.Rows.Take(650).Select(f => f.Id), true);
         Assert.Equal(650, (await s.Repository.QueryAsync(new(FavoritesOnly: true))).Rows.Count);
-        await s.Repository.AnnotateAsync(a.Rows.Take(600).Select(f => f.Id), "Large group", true);
-        var group = (await s.Repository.NamedItemsAsync(true)).Single();
-        Assert.Equal(600, (await s.Repository.QueryAsync(new(CollectionId: group.Id))).Rows.Count);
+        await s.Repository.AnnotateAsync(a.Rows.Take(600).Select(f => f.Id), "Large group");
+        var group = (await s.Repository.NamedItemsAsync()).Single();
+        Assert.Equal(600, (await s.Repository.QueryAsync(new(TagId: group.Id))).Rows.Count);
         Assert.Single((await s.Repository.QueryAsync(new(Text: "_%"))).Rows);
     }
 }

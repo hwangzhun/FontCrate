@@ -24,15 +24,23 @@ public partial class FontLibraryPage : Page
         previewWidthTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         { Interval = TimeSpan.FromMilliseconds(150) };
         previewWidthTimer.Tick += (_, _) => { previewWidthTimer.Stop(); if (active) UpdatePreviewWidth(); };
+        FontList.PreviewMouseRightButtonDown += OnFontRightButtonDown;
+        FontList.ContextMenu = new ContextMenu();
+        FontList.ContextMenuOpening += OnFontContextMenuOpening;
         model.ListPreviewsChanged += () =>
         {
             foreach (var image in rowRequests.Keys.ToArray()) StartThumbnail(image);
         };
         model.RestoreSelection += rows =>
         {
-            FontList.SelectedItems.Clear();
-            foreach (var row in rows) FontList.SelectedItems.Add(row);
-            model.SelectedFaces = FontList.SelectedItems.Cast<FaceRow>().ToArray();
+            restoringSelection = true;
+            try
+            {
+                foreach (var row in FontList.SelectedItems.Cast<FaceRow>().Except(rows).ToArray()) FontList.SelectedItems.Remove(row);
+                foreach (var row in rows) if (!FontList.SelectedItems.Contains(row)) FontList.SelectedItems.Add(row);
+                model.SelectedFaces = FontList.SelectedItems.Cast<FaceRow>().ToArray();
+            }
+            finally { restoringSelection = false; }
         };
         model.BeforeFacesReload += reset =>
         {
@@ -68,6 +76,39 @@ public partial class FontLibraryPage : Page
         Loaded += (_, _) => UpdateActivation();
         Unloaded += (_, _) => UpdateActivation();
         IsVisibleChanged += (_, _) => UpdateActivation();
+    }
+    private void OnFontRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source || ItemsControl.ContainerFromElement(FontList, source) is not DataGridRow row) return;
+        if (!row.IsSelected)
+        {
+            FontList.SelectedItems.Clear(); row.IsSelected = true;
+        }
+        row.Focus();
+    }
+    private void OnFontContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var menu = FontList.ContextMenu;
+        menu.Items.Clear();
+        var import = new MenuItem { Header = "导入字体…", IsEnabled = model.CanManage };
+        import.Click += async (_, _) => await model.ImportFontsAsync();
+        menu.Items.Add(import);
+        var export = new MenuItem { Header = "导出所选字体…", IsEnabled = model.CanManage && FontList.SelectedItems.Count > 0 };
+        export.Click += async (_, _) => await model.ExportSelectionAsync();
+        menu.Items.Add(export);
+        if (FontList.SelectedItems.Count == 0) return;
+        menu.Items.Add(new Separator());
+        var add = new MenuItem { Header = "添加到标签", IsEnabled = model.CanManage && !model.TagPanel.Busy };
+        foreach (var tag in model.TagPanel.Items)
+        {
+            var item = new MenuItem { Header = tag.Name, ToolTip = tag.Name };
+            item.Click += async (_, _) => await model.AddSelectionToTagAsync(tag.Id);
+            add.Items.Add(item);
+        }
+        if (add.Items.Count > 0) add.Items.Add(new Separator());
+        var create = new MenuItem { Header = "新建标签…" };
+        create.Click += async (_, _) => await model.NewTagForSelectionAsync();
+        add.Items.Add(create); menu.Items.Add(add);
     }
     private void UpdateActivation()
     {

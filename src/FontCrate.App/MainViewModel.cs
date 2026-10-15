@@ -40,6 +40,18 @@ public partial class MainViewModel : ObservableObject
         if (!CanManage) return Task.CompletedTask;
         return managementTask = ManageCoreAsync(action);
     }
+    public Task AddSelectionToTagAsync(long tagId)
+    {
+        var ids = Selection().Select(f => f.Id).ToArray();
+        return ids.Length == 0 ? Task.CompletedTask : Safe(() => ManageAsync(() => repository.AnnotateByIdAsync(ids, tagId)));
+    }
+    public Task NewTagForSelectionAsync()
+    {
+        var ids = Selection().Select(f => f.Id).ToArray();
+        if (ids.Length == 0 || confirmations is not ConfirmationService dialogs) return Task.CompletedTask;
+        return Safe(() => ManageAsync(() => ManagementDialogs.EditNameAsync(dialogs, "新建标签并添加所选字体", "",
+            async name => { await repository.CreateNamedItemAsync(name, ids); })));
+    }
     private async Task ManageCoreAsync(Func<Task> action)
     {
         Confirming = true;
@@ -62,10 +74,10 @@ public partial class MainViewModel : ObservableObject
         ClearFilters(); await ReloadAsync();
         SelectedSource = SourceItems.FirstOrDefault(s => s.Id == id); await ReloadAsync();
     }
-    public async Task ShowCategoryInLibraryAsync(long id, bool collections)
+    public async Task ShowCategoryInLibraryAsync(long id)
     {
         ClearFilters(); await ReloadAsync();
-        var panel = collections ? CollectionPanel : TagPanel;
+        var panel = TagPanel;
         panel.SelectedFilter = panel.Items.FirstOrDefault(s => s.Id == id); await ReloadAsync();
     }
     public event Action? ExitRequested;
@@ -88,12 +100,11 @@ public partial class MainViewModel : ObservableObject
     public event Action<bool>? AfterFacesReload;
     public ObservableCollection<NamedItem> SourceItems { get; } = [];
     public AnnotationPanelViewModel TagPanel { get; }
-    public AnnotationPanelViewModel CollectionPanel { get; }
     private IReadOnlyList<FaceRow> selectedFaces = [];
     public IReadOnlyList<FaceRow> SelectedFaces
     {
         get => selectedFaces;
-        set { selectedFaces = value; OnPropertyChanged(nameof(SelectionCount)); TagPanel.NotifySelectionChanged(); CollectionPanel.NotifySelectionChanged(); }
+        set { selectedFaces = value; OnPropertyChanged(nameof(SelectionCount)); TagPanel.NotifySelectionChanged(); }
     }
     public int SelectionCount => SelectedFaces.Count;
     public IReadOnlyList<int> GridCodes { get; private set; } = [];
@@ -112,27 +123,29 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string status = "准备就绪", gridPageText = "", resultText = "";
     [ObservableProperty] private int total;
     public float Dpi { get; set; } = 96;
-    public MainViewModel(Repository repository, Scanner scanner, IPreviewService previews, FontOperations operations, Dispatcher dispatcher, IConfirmationService confirmations)
+    public MainViewModel(Repository repository, Scanner scanner, IPreviewService previews, FontOperations operations, Dispatcher dispatcher, IConfirmationService confirmations, FontTransferService? transfers = null)
     {
+        this.transfers = transfers;
         this.confirmations = confirmations;
-        TagPanel = new(repository, false, ReloadAsync, Selection, item => ConfirmAnnotationDeletion(item, "标签"));
-        CollectionPanel = new(repository, true, ReloadAsync, Selection, item => ConfirmAnnotationDeletion(item, "合集"));
+        TagPanel = new(repository, ReloadAsync, Selection, item => ConfirmAnnotationDeletion(item, "标签"));
         TagPanel.FilterChanged += () => { OnPropertyChanged(nameof(FilterSummary)); Schedule(); };
-        CollectionPanel.FilterChanged += () => { OnPropertyChanged(nameof(FilterSummary)); Schedule(); };
         this.repository = repository; this.scanner = scanner; this.previews = previews; this.operations = operations; this.dispatcher = dispatcher;
         reloadTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(200), DispatcherPriority.Background, async (sender, _) =>
         { ((DispatcherTimer)sender!).Stop(); await Safe(ReloadAsync); }, dispatcher); reloadTimer.Stop();
         repository.Changed += OnRepositoryChanged;
     }
-    private void OnRepositoryChanged() => dispatcher.InvokeAsync(() =>
-    { if (!TagPanel.Busy && !CollectionPanel.Busy) Schedule(false); });
+    private void OnRepositoryChanged()
+    {
+        if (closing || Confirming || TagPanel.Busy) return;
+        dispatcher.InvokeAsync(() => { if (!closing && !Confirming && !TagPanel.Busy) Schedule(false); });
+    }
     private void Schedule(bool reset = true)
     { if (closing || syncingFilters) return; resetScroll |= reset; ++queryGeneration; reloadTimer.Stop(); reloadTimer.Start(); }
     partial void OnSearchChanged(string value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
     partial void OnSelectedSourceChanged(NamedItem? value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
     partial void OnFavoritesOnlyChanged(bool value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
     partial void OnStateChanged(string value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
-    partial void OnSelectedFaceChanged(FaceRow? value) { TagPanel.NotifySelectionChanged(); CollectionPanel.NotifySelectionChanged(); if (IsReloadingFaces) return; gridOffset = 0; _ = Safe(UpdateSelectionAsync); }
+    partial void OnSelectedFaceChanged(FaceRow? value) { TagPanel.NotifySelectionChanged(); if (IsReloadingFaces) return; gridOffset = 0; _ = Safe(UpdateSelectionAsync); }
     partial void OnListPreviewTextChanged(string value) => ListPreviewsChanged?.Invoke();
     partial void OnPreviewTextChanged(string value) => _ = Safe(RenderPreviewAsync);
     partial void OnFontSizeChanged(double value) => _ = Safe(RenderPreviewAsync);
@@ -154,12 +167,11 @@ public partial class MainViewModel : ObservableObject
         finally { try { await ReloadAsync(); } finally { Operating = false; } }
     }
     private static long? Filter(NamedItem? item) => item is null || item.Id == 0 ? null : item.Id;
-    public string FilterSummary => $"搜索：{(string.IsNullOrWhiteSpace(Search) ? "全部" : Search)} · 来源：{SelectedSource?.Name ?? "全部来源"} · 标签：{TagPanel.SelectedFilter?.Name ?? "全部标签"} · 合集：{CollectionPanel.SelectedFilter?.Name ?? "全部合集"} · 收藏：{(FavoritesOnly ? "仅收藏" : "全部")} · 状态：{State}";
+    public string FilterSummary => $"搜索：{(string.IsNullOrWhiteSpace(Search) ? "全部" : Search)} · 来源：{SelectedSource?.Name ?? "全部来源"} · 标签：{TagPanel.SelectedFilter?.Name ?? "全部标签"} · 收藏：{(FavoritesOnly ? "仅收藏" : "全部")} · 状态：{State}";
     [RelayCommand] private void ClearFilters()
     {
         Search = ""; SelectedSource = SourceItems.FirstOrDefault();
         TagPanel.SelectedFilter = TagPanel.FilterItems.FirstOrDefault();
-        CollectionPanel.SelectedFilter = CollectionPanel.FilterItems.FirstOrDefault();
         FavoritesOnly = false; State = "全部";
     }
     private Task<bool> ConfirmAnnotationDeletion(NamedItem item, string title) => ConfirmActionAsync(
@@ -175,25 +187,25 @@ public partial class MainViewModel : ObservableObject
     {
         var elapsed = Stopwatch.StartNew();
         long generation = ++queryGeneration;
+        PerformanceLog.Write("library-refresh-start", 0, $"generation={generation}");
         reloadTimer.Stop();
         var sources = await repository.SourcesAsync();
-        var tags = await repository.NamedItemCountsAsync(false);
-        var collections = await repository.NamedItemCountsAsync(true);
+        var tags = await repository.NamedItemCountsAsync();
         if (generation != queryGeneration || closing) return;
         long sourceSelection = SelectedSource?.Id ?? 0;
-        long tagSelection = TagPanel.SelectedFilter?.Id ?? 0, collectionSelection = CollectionPanel.SelectedFilter?.Id ?? 0;
+        long tagSelection = TagPanel.SelectedFilter?.Id ?? 0;
         syncingFilters = true;
         try
         {
             SyncItems(SourceItems, sources.Select(s => new NamedItem(s.Id, (s.Available ? "" : "[不可用] ") + s.Path)), "全部来源");
             SelectedSource = SourceItems.FirstOrDefault(s => s.Id == sourceSelection) ?? SourceItems[0];
-            TagPanel.Refresh(tags); CollectionPanel.Refresh(collections);
-            if (sourceSelection != SelectedSource.Id || tagSelection != TagPanel.SelectedFilter?.Id || collectionSelection != CollectionPanel.SelectedFilter?.Id)
+            TagPanel.Refresh(tags);
+            if (sourceSelection != SelectedSource.Id || tagSelection != TagPanel.SelectedFilter?.Id)
                 resetScroll = true;
         }
         finally { syncingFilters = false; }
         OnPropertyChanged(nameof(FilterSummary));
-        var q = new FaceQuery(Search, Filter(SelectedSource), Filter(TagPanel.SelectedFilter), Filter(CollectionPanel.SelectedFilter), FavoritesOnly, State);
+        var q = new FaceQuery(Search, Filter(SelectedSource), Filter(TagPanel.SelectedFilter), FavoritesOnly, State);
         var page = await repository.QueryAsync(q);
         if (generation != queryGeneration || closing) return;
         var previousFace = SelectedFace;
@@ -203,7 +215,7 @@ public partial class MainViewModel : ObservableObject
         IsReloadingFaces = true;
         try
         {
-            Faces.ReplaceAll(page.Rows);
+            if (!Faces.SequenceEqual(page.Rows)) Faces.ReplaceAll(page.Rows);
             SelectedFace = Faces.FirstOrDefault(f => f.Id == selected);
             SelectedFaces = Faces.Where(f => selectedIds.Contains(f.Id)).ToArray();
             RestoreSelection?.Invoke(SelectedFaces.OrderBy(f => f.Id == selected ? 0 : 1).ToArray());
@@ -214,7 +226,7 @@ public partial class MainViewModel : ObservableObject
         Total = page.Total;
         if (previousFace != SelectedFace) { gridOffset = 0; await Safe(UpdateSelectionAsync); }
         else await Safe(RefreshAnnotationDetailsAsync);
-        PerformanceLog.Write("query-display", elapsed.Elapsed.TotalMilliseconds, $"total={Total}");
+        PerformanceLog.Write("query-display", elapsed.Elapsed.TotalMilliseconds, $"generation={generation}; total={Total}");
     }
 
     private static void SyncItems(ObservableCollection<NamedItem> target, IEnumerable<NamedItem> values, string all)
@@ -433,10 +445,10 @@ public partial class MainViewModel : ObservableObject
         var face = SelectedFace; if (face is null) { Details = "请选择字体"; LocationsText = ""; coverage = []; return; }
         var parsed = (await repository.FacesForFileAsync(face.Hash)).First(f => f.Index == face.Index);
         var locations = await repository.LocationsAsync(face.Hash);
-        var tags = await repository.FaceItemsAsync(face.Id, false); var collections = await repository.FaceItemsAsync(face.Id, true);
+        var tags = await repository.FaceItemsAsync(face.Id);
         if (SelectedFace?.Id != face.Id || version != selectionGeneration) return;
         coverage = parsed.Coverage;
-        SetDetails(face, tags, collections);
+        SetDetails(face, tags);
         LocationsText = string.Join("\n", locations.Select(l => (l.Available ? "" : "[不可用] ") + l.Path));
         await RenderPreviewAsync();
     }
@@ -444,13 +456,13 @@ public partial class MainViewModel : ObservableObject
     {
         var face = SelectedFace; long version = selectionGeneration;
         if (face is null) return;
-        var tags = await repository.FaceItemsAsync(face.Id, false);
-        var collections = await repository.FaceItemsAsync(face.Id, true);
-        if (SelectedFace?.Id == face.Id && version == selectionGeneration) SetDetails(face, tags, collections);
+        var tags = await repository.FaceItemsAsync(face.Id);
+
+        if (SelectedFace?.Id == face.Id && version == selectionGeneration) SetDetails(face, tags);
     }
-    private void SetDetails(FaceRow face, IReadOnlyList<NamedItem> tags, IReadOnlyList<NamedItem> collections)
+    private void SetDetails(FaceRow face, IReadOnlyList<NamedItem> tags)
     {
-        Details = $"{face.FullName}\n{face.FileType} · {face.Style} · 字重 {face.Weight} · 宽度 {face.Width}\n{face.PostScriptName}\n{face.Version}\nface #{face.Index} · {(face.Variable ? "变量字体 / 默认实例" : "静态字体")}\n{face.Status}\n标签：{string.Join("、", tags.Select(t => t.Name))}\n合集：{string.Join("、", collections.Select(t => t.Name))}\nSHA-256：{face.Hash}";
+        Details = $"{face.FullName}\n{face.FileType} · {face.Style} · 字重 {face.Weight} · 宽度 {face.Width}\n{face.PostScriptName}\n{face.Version}\nface #{face.Index} · {(face.Variable ? "变量字体 / 默认实例" : "静态字体")}\n{face.Status}\n标签：{string.Join("、", tags.Select(t => t.Name))}\nSHA-256：{face.Hash}";
     }
     private async Task RenderPreviewAsync()
     {
@@ -514,7 +526,7 @@ public partial class MainViewModel : ObservableObject
     public void ClearPreviews() { SuspendPreviews(); PreviewImage = null; GridImage = null; previews.ClearCache(); }
     public void RestorePreviews() { hidden = false; _ = Safe(RenderPreviewAsync); }
     private async Task Safe(Func<Task> work)
-    { try { await work(); } catch (OperationCanceledException) { } catch (Exception e) { Status = e.Message; ResultText = e.ToString(); } }
+    { try { await work(); } catch (OperationCanceledException) { } catch (Exception e) { Status = e.Message; ResultText = e.ToString(); PerformanceLog.Write("ui-operation-error", 0, e.ToString()); } }
     public async Task<IReadOnlyList<OperationResult>> ShutdownAsync()
     {
         closing = true; reloadTimer.Stop(); scanCancellation?.Cancel(); previewCancellation?.Cancel(); operationCancellation?.Cancel();

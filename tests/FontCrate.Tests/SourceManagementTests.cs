@@ -30,8 +30,7 @@ public class SourceManagementTests
         File.Copy(face.Path!, Path.Combine(secondFolder, "shared.ttf"));
         var second = await s.Repository.AddSourceAsync(secondFolder);
         await new Scanner(s.Repository, new SfntParser()).ScanAsync(second, false, null, default);
-        await s.Repository.AnnotateAsync([face.Id], "Retained", false);
-        await s.Repository.AnnotateAsync([face.Id], "Retained", true);
+        await s.Repository.AnnotateAsync([face.Id], "Retained");
         Directory.Move(s.Fonts, s.Fonts + "-offline");
         await new Scanner(s.Repository, new SfntParser()).ScanAsync(original, false, null, default);
         var summaries = await s.Repository.SourceSummariesAsync();
@@ -40,8 +39,7 @@ public class SourceManagementTests
         Assert.Equal(1, summaries.Single(i => i.Id == second.Id).FaceCount);
         await s.Repository.RemoveSourceAsync(original.Id);
         Assert.Equal(second.Id, Assert.Single(await s.Repository.SourceSummariesAsync()).Id);
-        Assert.Single(await s.Repository.FaceItemsAsync(face.Id, false));
-        Assert.Single(await s.Repository.FaceItemsAsync(face.Id, true));
+        Assert.Single(await s.Repository.FaceItemsAsync(face.Id));
         Assert.NotNull(Assert.Single((await s.Repository.QueryAsync(new())).Rows).Path);
     }
     [Fact]

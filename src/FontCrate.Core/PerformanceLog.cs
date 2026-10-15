@@ -13,8 +13,8 @@ public static class PerformanceLog
             if (Path is null) return;
             try
             {
-                if (File.Exists(Path) && new FileInfo(Path).Length > 1024 * 1024) File.Move(Path, Path + ".1", true);
-                File.AppendAllText(Path, JsonSerializer.Serialize(new { time = DateTimeOffset.UtcNow, operation, milliseconds, detail }) + Environment.NewLine);
+                if (File.Exists(Path) && new FileInfo(Path).Length > 8 * 1024 * 1024) File.Move(Path, Path + ".1", true);
+                File.AppendAllText(Path, JsonSerializer.Serialize(new { time = DateTimeOffset.UtcNow, process = Environment.ProcessId, thread = Environment.CurrentManagedThreadId, operation, milliseconds, detail }) + Environment.NewLine);
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }

@@ -74,7 +74,7 @@ public partial class SourcesManagementViewModel : FontBrowserViewModel
         var source = SelectedSource!;
         return RunAsync(async () =>
         {
-            if (await dialogs.ConfirmAsync("移除来源", $"移除 {source.Path} 的索引位置？\n原文件、标签、合集和临时字体状态会保留。", "移除"))
+            if (await dialogs.ConfirmAsync("移除来源", $"移除 {source.Path} 的索引位置？\n原文件、标签和临时字体状态会保留。", "移除"))
                 await Repository.RemoveSourceAsync(source.Id);
         });
     }
@@ -95,5 +95,5 @@ public partial class SourcesManagementViewModel : FontBrowserViewModel
     }
     [RelayCommand(CanExecute = nameof(CanSource))] private async Task ViewAsync()
     { await Owner.ShowSourceInLibraryAsync(SelectedSource!.Id); viewFonts(); }
-    public override void Dispose() { searchCancellation?.Cancel(); searchCancellation?.Dispose(); base.Dispose(); }
+    public override void Dispose() { searchCancellation?.Cancel(); searchCancellation?.Dispose(); searchCancellation = null; base.Dispose(); }
 }

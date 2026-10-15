@@ -31,26 +31,12 @@ try {
     if (Test-Path (Join-Path $installDir 'FontCrate.exe')) { throw 'Blocked installation wrote application files.' }
 
     Invoke-Setup $installerPath $arguments
-    foreach ($file in @('FontCrate.exe', 'FontCrate.dll', 'Wpf.Ui.dll', 'Wpf.Ui.Abstractions.dll', 'coreclr.dll', 'e_sqlite3.dll', 'LICENSE')) {
-        if (-not (Test-Path (Join-Path $installDir $file))) { throw "Installed file missing: $file" }
-    }
-    foreach ($excluded in @('docs', 'licenses', 'THIRD-PARTY-NOTICES.md')) {
-        if (Test-Path (Join-Path $installDir $excluded)) { throw "Excluded content entered the installation: $excluded" }
-    }
-    foreach ($directory in @(Get-ChildItem $installDir -Directory)) {
-        if ($directory.Name -notmatch '^(en|zh)(-|$)' -and
-            (Get-ChildItem $directory.FullName -Filter '*.resources.dll' -File)) {
-            throw "Unexpected resource language entered the installation: $($directory.Name)"
+    if (-not (Test-Path (Join-Path $installDir 'FontCrate.exe'))) { throw 'Application executable missing.' }
+    foreach ($file in @(Get-ChildItem $installDir -File -Recurse)) {
+        if ($file.Name -notmatch '^(FontCrate\.exe|unins[0-9]+\.(exe|dat|msg))$') {
+            throw "Unexpected installed sidecar file: $($file.FullName)"
         }
     }
-    foreach ($language in @('zh-Hans', 'zh-Hant')) {
-        if (-not (Test-Path (Join-Path $installDir "$language/PresentationFramework.resources.dll"))) {
-            throw "Chinese framework resources missing: $language"
-        }
-    }
-    if (Get-ChildItem $installDir -Filter '*.pdb' -Recurse -File) { throw 'Debug symbols entered the installation.' }
-    $runtime = Get-Content (Join-Path $installDir 'FontCrate.runtimeconfig.json') -Raw | ConvertFrom-Json
-    if (-not $runtime.runtimeOptions.includedFrameworks -or $runtime.runtimeOptions.framework -or $runtime.runtimeOptions.frameworks) { throw 'Published application is not self-contained.' }
     if (-not (Test-Path $uninstallKey)) { throw 'Current-user uninstall registration missing.' }
     $registeredDir = (Get-ItemProperty $uninstallKey).InstallLocation
     if ($registeredDir.TrimEnd('\') -ne $installDir.TrimEnd('\')) { throw 'Unexpected registered installation directory.' }
@@ -64,9 +50,19 @@ try {
     $expectedTarget = Join-Path $installDir 'FontCrate.exe'
     if ($targetPath -ne $expectedTarget) { throw "Shortcut target '$targetPath' does not match '$expectedTarget'." }
 
+    # Emulate old app sidecars to verify migration to single-file deployment.
+    foreach ($legacy in @('FontCrate.dll', 'coreclr.dll', 'FontCrate.runtimeconfig.json', 'README.md', 'createdump.exe')) {
+        Set-Content (Join-Path $installDir $legacy) 'old application payload'
+    }
+    New-Item -ItemType Directory -Path (Join-Path $installDir 'zh-Hant') -Force | Out-Null
+    Set-Content (Join-Path $installDir 'zh-Hant/PresentationFramework.resources.dll') 'old language resource'
     # Reinstall over the same location; this exercises upgrade file replacement.
     Invoke-Setup $installerPath $arguments
     if (-not (Test-Path $marker)) { throw 'Upgrade removed user data.' }
+    foreach ($legacy in @('FontCrate.dll', 'coreclr.dll', 'FontCrate.runtimeconfig.json', 'README.md', 'createdump.exe')) {
+        if (Test-Path (Join-Path $installDir $legacy)) { throw "Upgrade left a legacy sidecar: $legacy" }
+    }
+    if (Test-Path (Join-Path $installDir 'zh-Hant')) { throw 'Upgrade left the old language folder.' }
     $uninstaller = Join-Path $installDir 'unins000.exe'
     $guard = [Threading.Mutex]::new($false, 'Local\FontCrate-Running')
     Invoke-Setup $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') $false

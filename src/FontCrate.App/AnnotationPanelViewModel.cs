@@ -8,7 +8,6 @@ namespace FontCrate.App;
 public partial class AnnotationPanelViewModel : ObservableObject
 {
     private readonly Repository repository;
-    private readonly bool collections;
     private readonly Func<Task> refresh;
     private readonly Func<FaceRow[]> selection;
     private readonly Func<NamedItem, Task<bool>> confirmDelete;
@@ -16,7 +15,7 @@ public partial class AnnotationPanelViewModel : ObservableObject
     private bool syncing;
     private long? editId;
     public event Action? FilterChanged;
-    public string Title => collections ? "合集" : "标签";
+    public string Title => "标签";
     public string SearchLabel => $"搜索{Title}名称";
     public string AssignmentLabel => $"选择要添加或移除的{Title}";
     public ObservableCollection<NamedItem> Items { get; } = [];
@@ -29,9 +28,9 @@ public partial class AnnotationPanelViewModel : ObservableObject
     public string ActiveFilterText => SelectedFilter?.Id is > 0 ? $"当前筛选：{SelectedFilter.Name}" : "";
     public bool HasActiveFilter => SelectedFilter?.Id is > 0;
 
-    public AnnotationPanelViewModel(Repository repository, bool collections, Func<Task> refresh, Func<FaceRow[]> selection, Func<NamedItem, Task<bool>> confirmDelete)
+    public AnnotationPanelViewModel(Repository repository, Func<Task> refresh, Func<FaceRow[]> selection, Func<NamedItem, Task<bool>> confirmDelete)
     {
-        this.repository = repository; this.collections = collections; this.refresh = refresh; this.selection = selection;
+        this.repository = repository; this.refresh = refresh; this.selection = selection;
         this.confirmDelete = confirmDelete;
         all = new(0, $"全部{Title}"); SelectedFilter = all;
     }
@@ -116,12 +115,12 @@ public partial class AnnotationPanelViewModel : ObservableObject
         Busy = true; Error = "";
         try
         {
-            if (editId is long id) await repository.RenameNamedItemAsync(id, EditName, collections);
-            else await repository.CreateNamedItemAsync(EditName, collections);
+            if (editId is long id) await repository.RenameNamedItemAsync(id, EditName);
+            else await repository.CreateNamedItemAsync(EditName);
             Editing = false; EditName = ""; editId = null;
             await refresh();
         }
-        catch (Exception ex) { Error = ex.Message; }
+        catch (Exception ex) { Error = ex.Message; PerformanceLog.Write("tag-operation-error", 0, ex.ToString()); }
         finally { Busy = false; }
     }
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -131,14 +130,14 @@ public partial class AnnotationPanelViewModel : ObservableObject
         long id = SelectedFilter!.Id; Busy = true; Error = "";
         try
         {
-            var item = (await repository.NamedItemCountsAsync(collections)).FirstOrDefault(x => x.Id == id);
+            var item = (await repository.NamedItemCountsAsync()).FirstOrDefault(x => x.Id == id);
             if (item is null) { await refresh(); return; }
             if (!await confirmDelete(item)) return;
-            await repository.DeleteNamedItemAsync(id, collections);
+            await repository.DeleteNamedItemAsync(id);
             if (editId == id) { Editing = false; editId = null; EditName = ""; }
             await refresh();
         }
-        catch (Exception ex) { Error = ex.Message; }
+        catch (Exception ex) { Error = ex.Message; PerformanceLog.Write("tag-operation-error", 0, ex.ToString()); }
         finally { Busy = false; }
     }
     [RelayCommand(CanExecute = nameof(CanApply))] private Task AddToFontsAsync() => Apply(false);
@@ -148,8 +147,8 @@ public partial class AnnotationPanelViewModel : ObservableObject
         if (!CanApply()) return;
         long id = AssignmentItem!.Id; var ids = selection().Select(x => x.Id).ToArray();
         Busy = true; Error = "";
-        try { await repository.AnnotateByIdAsync(ids, id, collections, remove); await refresh(); }
-        catch (Exception ex) { Error = ex.Message; }
+        try { await repository.AnnotateByIdAsync(ids, id, remove); await refresh(); }
+        catch (Exception ex) { Error = ex.Message; PerformanceLog.Write("tag-operation-error", 0, ex.ToString()); }
         finally { Busy = false; }
     }
 }

@@ -23,7 +23,7 @@ public record FaceRow(string Id, string Hash, int Index, string Family, string S
     public bool Duplicate => Locations > 1;
     public string Status => $"{(Installed ? "已安装 " : "")}{(Active ? "临时启用 " : "")}{(Path is null ? "来源不可用 " : "")}{(Locations > 1 ? $"{Locations} 个位置" : "")}{(Inactive ? " 未安装 / 未启用" : "")}".Trim();
 }
-public record FaceQuery(string Text = "", long? SourceId = null, long? TagId = null, long? CollectionId = null,
+public record FaceQuery(string Text = "", long? SourceId = null, long? TagId = null,
     bool FavoritesOnly = false, string State = "全部");
 public record FacePage(IReadOnlyList<FaceRow> Rows, int Total);
 public record Location(string Path, bool Available);

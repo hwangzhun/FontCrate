@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Interop;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
@@ -83,7 +84,11 @@ public sealed class ThemeService : ObservableObject, IDisposable
         if (window is not null)
         {
             window.Loaded -= OnWindowLoaded;
-            if (watching && window.IsLoaded) SystemThemeWatcher.UnWatch(window);
+            // IsLoaded can stay true during Application.OnExit after the HWND
+            // has been destroyed. UnWatch requires an existing native handle.
+            if (watching && new WindowInteropHelper(window).Handle != IntPtr.Zero) SystemThemeWatcher.UnWatch(window);
+            watching = false;
+            window = null;
         }
     }
 }

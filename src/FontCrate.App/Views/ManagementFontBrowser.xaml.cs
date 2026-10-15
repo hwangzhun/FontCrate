@@ -21,7 +21,10 @@ public partial class ManagementFontBrowser : UserControl
     }
     private void Attach()
     {
-        if (model is not null) { model.PreviewSettingsChanged -= RefreshThumbnails; model.SelectionRestored -= RestoreSelection; model.BeforeFontsChanged -= SaveScroll; }
+        if (ReferenceEquals(model, DataContext))
+        { if (IsLoaded && model is not null) RestoreSelection(model.SelectedFonts); return; }
+        CancelRequests();
+        if (model is not null) { model.PreviewSettingsChanged -= RefreshThumbnails; model.SelectionRestored -= RestoreSelection; model.BeforeFontsChanged -= SaveScroll; model.SuspendPreview(); }
         model = DataContext as FontBrowserViewModel;
         if (model is not null) { model.PreviewSettingsChanged += RefreshThumbnails; model.SelectionRestored += RestoreSelection; model.BeforeFontsChanged += SaveScroll; if (IsLoaded) RestoreSelection(model.SelectedFonts); }
     }
@@ -46,10 +49,12 @@ public partial class ManagementFontBrowser : UserControl
             foreach (var item in selected) if (!FontList.SelectedItems.Contains(item)) FontList.SelectedItems.Add(item);
         }
         finally { restoring = false; }
-        if (scroll is not null) Dispatcher.InvokeAsync(() => scroll.ScrollToVerticalOffset(savedOffset), DispatcherPriority.Loaded);
+        var current = model;
+        if (scroll is not null) Dispatcher.InvokeAsync(() =>
+        { if (IsLoaded && ReferenceEquals(model, current)) scroll.ScrollToVerticalOffset(savedOffset); }, DispatcherPriority.Loaded);
     }
     private void SelectionChanged(object sender, SelectionChangedEventArgs e)
-    { if (!restoring && DataContext is FontBrowserViewModel vm) vm.SetSelection(FontList.SelectedItems.Cast<FaceRow>(), FontList.SelectedItem as FaceRow); }
+    { if (!restoring && DataContext is FontBrowserViewModel { IsReloadingFonts: false } vm) vm.SetSelection(FontList.SelectedItems.Cast<FaceRow>(), FontList.SelectedItem as FaceRow); }
     private void ThumbnailLoaded(object sender, RoutedEventArgs e) => _ = LoadThumbnailAsync((Image)sender);
     private void ThumbnailUnloaded(object sender, RoutedEventArgs e) => Cancel((Image)sender);
     private void ThumbnailChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -61,7 +66,7 @@ public partial class ManagementFontBrowser : UserControl
     private async Task LoadThumbnailAsync(Image image)
     {
         Cancel(image);
-        if (DataContext is not FontBrowserViewModel vm || image.DataContext is not FaceRow face || face.SourceUnavailable || !image.IsLoaded) return;
+        if (!IsLoaded || DataContext is not FontBrowserViewModel vm || image.DataContext is not FaceRow face || face.SourceUnavailable || !image.IsLoaded) return;
         var source = new CancellationTokenSource(); var token = source.Token; requests[image] = source;
         try { var bitmap = await vm.RenderThumbnailAsync(face, token); if (!token.IsCancellationRequested && image.DataContext is FaceRow current && current.Id == face.Id) image.Source = bitmap; }
         catch (OperationCanceledException) { }

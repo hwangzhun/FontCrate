@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Reflection;
 using FontCrate.Core;
 using FontCrate.Windows;
 using Forms = System.Windows.Forms;
@@ -31,14 +32,21 @@ public partial class App : System.Windows.Application
         {
             var startup = System.Diagnostics.Stopwatch.StartNew();
             string data = AppIdentity.ResolveDataDirectory(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
-            var repo = new Repository(Path.Combine(data, "library.db")); await repo.InitializeAsync();
+            Directory.CreateDirectory(data);
             PerformanceLog.Path = Path.Combine(data, "performance.jsonl");
+            string? build = typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            PerformanceLog.Write("session-start", 0, $"version={build}; os={Environment.OSVersion}; framework={System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+            TaskScheduler.UnobservedTaskException += (_, args) => PerformanceLog.Write("unobserved-task-error", 0, args.Exception.ToString());
+            DispatcherUnhandledException += (_, args) => PerformanceLog.Write("ui-unhandled-error", 0, args.Exception.ToString());
+            AppDomain.CurrentDomain.UnhandledException += (_, args) => PerformanceLog.Write("unhandled-error", 0, args.ExceptionObject.ToString());
+            var repo = new Repository(Path.Combine(data, "library.db")); await repo.InitializeAsync();
             var parser = new DirectWriteParser(); var scanner = new Scanner(repo, parser);
             previews = new PreviewService(); var platform = new WindowsFontPlatform(data, parser);
             var operations = new FontOperations(repo, platform);
             confirmations = new ConfirmationService();
             theme = new ThemeService(new SettingsStore(Path.Combine(data, "settings.json")));
-            model = new MainViewModel(repo, scanner, previews, operations, Dispatcher, confirmations);
+            model = new MainViewModel(repo, scanner, previews, operations, Dispatcher, confirmations,
+                new FontTransferService(repo, parser, scanner, Path.Combine(data, "ImportedFonts")));
             model.InitialViewReady += () => PerformanceLog.Write("startup-interactive", startup.Elapsed.TotalMilliseconds);
             model.ExitRequested += async () => await ExitAsync();
             var window = new MainWindow(model, theme, confirmations); MainWindow = window;
@@ -79,6 +87,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
+            PerformanceLog.Write("startup-error", 0, ex.ToString());
             string? errorLog = null;
             try
             {
@@ -129,5 +138,5 @@ public partial class App : System.Windows.Application
         try { if (confirmations is not null) await confirmations.InformAsync("FontCrate 保持运行", message); }
         finally { window?.ResumeTaskDialog(); }
     }
-    protected override void OnExit(ExitEventArgs e) { theme?.Dispose(); tray?.Dispose(); trayIcon?.Dispose(); instance?.Dispose(); installerGuard?.Dispose(); base.OnExit(e); }
+    protected override void OnExit(ExitEventArgs e) { PerformanceLog.Write("session-exit", 0, $"exitCode={e.ApplicationExitCode}"); theme?.Dispose(); tray?.Dispose(); trayIcon?.Dispose(); instance?.Dispose(); installerGuard?.Dispose(); base.OnExit(e); }
 }

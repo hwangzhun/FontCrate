@@ -4,9 +4,9 @@
     <AssemblyName>FontCrate</AssemblyName>
     <RootNamespace>FontCrate.App</RootNamespace>
     <Product>FontCrate</Product>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.0.2</Version>
+    <AssemblyVersion>1.0.2.0</AssemblyVersion>
+    <FileVersion>1.0.2.0</FileVersion>
     <Authors>Hwangzhun</Authors>
     <Copyright>Copyright (C) 2026 Hwangzhun</Copyright>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
@@ -20,6 +20,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ImplicitUsings>disable</ImplicitUsings>
+    <SatelliteResourceLanguages>en;zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets/FontCrate.png" />
@@ -29,6 +30,12 @@
     <ProjectReference Include="../FontCrate.Windows/FontCrate.Windows.csproj" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
-    <Content Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="../../LICENSE" LogicalName="FontCrate.Legal.LICENSE" />
+    <EmbeddedResource Include="../../THIRD-PARTY-NOTICES.md" LogicalName="FontCrate.Legal.NOTICES.txt" />
+    <EmbeddedResource Include="../../licenses/*" LogicalName="FontCrate.Legal.licenses.%(Filename)%(Extension)" />
   </ItemGroup>
+  <Target Name="RecordBundleManifest" BeforeTargets="GenerateSingleFileBundle" DependsOnTargets="PrepareForBundle"
+          Condition="'$(PublishSingleFile)' == 'true' and '$(BundleManifestPath)' != ''">
+    <WriteLinesToFile File="$(BundleManifestPath)" Lines="@(FilesToBundle->'%(RelativePath)')" Overwrite="true" />
+  </Target>
 </Project>

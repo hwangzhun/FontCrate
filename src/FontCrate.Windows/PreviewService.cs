@@ -31,7 +31,19 @@ public sealed partial class PreviewService : IPreviewService
             }
             if (request.Face.Path is null) throw new IOException("字体来源不可用");
             if (await FontIdentity.HashAsync(request.Face.Path, ct) != request.Face.Hash) throw new IOException("字体文件已变化，请重新扫描");
-            var result = await Task.Run(() => Render(request, ct), ct);
+            var result = await Task.Run(() =>
+            {
+                var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                PerformanceLog.Write("preview-native-start", 0, $"face={request.Face.Id}; width={request.Width}");
+                try
+                {
+                    var rendered = Render(request, ct);
+                    PerformanceLog.Write("preview-native-complete", elapsed.Elapsed.TotalMilliseconds, $"face={request.Face.Id}");
+                    return rendered;
+                }
+                catch (OperationCanceledException) { PerformanceLog.Write("preview-native-canceled", elapsed.Elapsed.TotalMilliseconds, $"face={request.Face.Id}"); throw; }
+                catch (Exception ex) { PerformanceLog.Write("preview-native-error", elapsed.Elapsed.TotalMilliseconds, ex.ToString()); throw; }
+            }, ct);
             ct.ThrowIfCancellationRequested();
             lock (cache)
             {

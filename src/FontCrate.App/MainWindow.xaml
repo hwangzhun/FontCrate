@@ -16,7 +16,7 @@
       <ui:NavigationView.MenuItems>
         <ui:NavigationViewItem Content="字体库" Icon="{ui:SymbolIcon TextFont24}" TargetPageType="{x:Type views:FontLibraryPage}" />
         <ui:NavigationViewItem Content="来源管理" Icon="{ui:SymbolIcon Folder24}" TargetPageType="{x:Type views:SourcesPage}" />
-        <ui:NavigationViewItem Content="标签与合集" Icon="{ui:SymbolIcon Tag24}" TargetPageType="{x:Type views:AnnotationsPage}" />
+        <ui:NavigationViewItem Content="标签" Icon="{ui:SymbolIcon Tag24}" TargetPageType="{x:Type views:AnnotationsPage}" />
         <ui:NavigationViewItem Content="任务与结果" Icon="{ui:SymbolIcon TaskListSquareLtr24}" TargetPageType="{x:Type views:TasksPage}" />
       </ui:NavigationView.MenuItems>
       <ui:NavigationView.FooterMenuItems>

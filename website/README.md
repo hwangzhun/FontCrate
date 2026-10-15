@@ -15,7 +15,7 @@ npm run preview
 
 打开 http://127.0.0.1:4173 。`dist/` 是可以直接上传的完整网站，未纳入 Git。预览服务仅监听本机；可用 `PORT` 改端口。默认构建不启用统计，也不生成需要正式域名的 SEO URL。
 
-修改 `content.mjs` 更新双语文案，`template.mjs` 更新 HTML，`assets/style.css` 更新样式。现有 `assets/` 包含优化后的项目 Logo、图标及 1200×630 分享封面。页面中的字体合集是功能示意，不是软件截图。
+修改 `content.mjs` 更新双语文案，`template.mjs` 更新 HTML，`assets/style.css` 更新样式。现有 `assets/` 包含优化后的项目 Logo、图标及 1200×630 分享封面。页面中的字体标签是功能示意，不是软件截图。
 
 ## 环境变量
 

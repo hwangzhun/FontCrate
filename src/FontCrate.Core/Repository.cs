@@ -36,11 +36,12 @@ public sealed class Repository
     {
         using var versionCmd = Cmd(c, "PRAGMA user_version");
         var version = Convert.ToInt32(await versionCmd.ExecuteScalarAsync());
-        if (version > 1) throw new InvalidDataException("数据库来自较新版本，禁止降级打开");
+        if (version > 2) throw new InvalidDataException("数据库来自较新版本，禁止降级打开");
         await Exec(c, "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
-        if (version == 1) return 0;
+        if (version == 2) return 0;
+        PerformanceLog.Write("database-upgrade-start", 0, $"from={version}; to=2");
         using var tx = c.BeginTransaction();
-        await Exec(c, """
+        if (version == 0) await Exec(c, """
             CREATE TABLE sources(id INTEGER PRIMARY KEY,path TEXT NOT NULL UNIQUE COLLATE NOCASE,available INTEGER NOT NULL DEFAULT 1);
             CREATE TABLE files(hash TEXT PRIMARY KEY,size INTEGER NOT NULL,installed INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 0,owned INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE locations(source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,path TEXT NOT NULL COLLATE NOCASE,hash TEXT REFERENCES files(hash),size INTEGER NOT NULL,modified INTEGER NOT NULL,available INTEGER NOT NULL,seen TEXT NOT NULL,PRIMARY KEY(source_id,path));
@@ -49,14 +50,24 @@ public sealed class Repository
             CREATE INDEX faces_family ON faces(family COLLATE NOCASE,style COLLATE NOCASE,id);
             CREATE TABLE tags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE);
             CREATE TABLE face_tags(face_id TEXT REFERENCES faces(id) ON DELETE CASCADE,tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,PRIMARY KEY(face_id,tag_id));
-            CREATE TABLE collections(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE);
-            CREATE TABLE collection_faces(face_id TEXT REFERENCES faces(id) ON DELETE CASCADE,collection_id INTEGER REFERENCES collections(id) ON DELETE CASCADE,PRIMARY KEY(face_id,collection_id));
             CREATE TABLE scan_errors(source_id INTEGER REFERENCES sources(id) ON DELETE CASCADE,path TEXT NOT NULL,message TEXT NOT NULL,PRIMARY KEY(source_id,path));
             CREATE TABLE operations(id INTEGER PRIMARY KEY,hash TEXT NOT NULL REFERENCES files(hash),kind TEXT NOT NULL,stage TEXT NOT NULL,path TEXT NOT NULL,registry_name TEXT NOT NULL,message TEXT NOT NULL DEFAULT '',loaded INTEGER NOT NULL DEFAULT 0);
             CREATE INDEX operations_hash ON operations(hash,kind,stage);
-            PRAGMA user_version=1;
+            PRAGMA user_version=2;
             """);
-        tx.Commit(); return 0;
+        // Version 1 stored two equivalent classification systems. Merge by SQLite's
+        // existing NOCASE rule, preserving tag IDs and the union of memberships.
+        if (version == 1) await Exec(c, """
+            INSERT INTO tags(name) SELECT name FROM collections WHERE 1 ON CONFLICT(name) DO NOTHING;
+            INSERT INTO face_tags(face_id,tag_id)
+              SELECT cf.face_id,t.id FROM collection_faces cf
+              JOIN collections c ON c.id=cf.collection_id JOIN tags t ON t.name=c.name COLLATE NOCASE
+              WHERE 1 ON CONFLICT(face_id,tag_id) DO NOTHING;
+            DROP TABLE collection_faces;
+            DROP TABLE collections;
+            PRAGMA user_version=2;
+            """);
+        tx.Commit(); PerformanceLog.Write("database-upgrade-complete", 0, "version=2"); return 0;
     });
 
     public Task<Source> AddSourceAsync(string path) => Use(async c =>
@@ -158,7 +169,6 @@ public sealed class Repository
             WHERE ($text='' OR f.family LIKE $text ESCAPE '\' OR f.style LIKE $text ESCAPE '\' OR f.full_name LIKE $text ESCAPE '\' OR f.postscript LIKE $text ESCAPE '\')
             AND ($source IS NULL OR EXISTS(SELECT 1 FROM locations l WHERE l.hash=f.hash AND l.source_id=$source))
             AND ($tag IS NULL OR EXISTS(SELECT 1 FROM face_tags t WHERE t.face_id=f.id AND t.tag_id=$tag))
-            AND ($collection IS NULL OR EXISTS(SELECT 1 FROM collection_faces g WHERE g.face_id=f.id AND g.collection_id=$collection))
             AND ($favorite=0 OR f.favorite=1)
             AND ($state='全部' OR ($state='已安装' AND x.installed=1) OR ($state='临时启用' AND x.active=1)
                 OR ($state='来源不可用' AND NOT EXISTS(SELECT 1 FROM locations l WHERE l.hash=f.hash AND l.available=1))
@@ -166,7 +176,7 @@ public sealed class Repository
             """;
         string text = q.Text.Trim();
         text = text.Length == 0 ? "" : "%" + text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
-        (string, object?)[] args = [("$text", text), ("$source", q.SourceId), ("$tag", q.TagId), ("$collection", q.CollectionId),
+        (string, object?)[] args = [("$text", text), ("$source", q.SourceId), ("$tag", q.TagId),
             ("$favorite", q.FavoritesOnly), ("$state", q.State)];
         using var count = Cmd(c, "SELECT COUNT(*) FROM faces f JOIN files x ON x.hash=f.hash " + where, args);
         int total = Convert.ToInt32(await count.ExecuteScalarAsync());
@@ -196,49 +206,56 @@ public sealed class Repository
         using var cmd = Cmd(c, "SELECT path,MAX(available) FROM locations WHERE hash=$h GROUP BY path ORDER BY path", ("$h", hash));
         using var r = await cmd.ExecuteReaderAsync(); var list = new List<Location>(); while (await r.ReadAsync()) list.Add(new(r.GetString(0), r.GetBoolean(1))); return list;
     });
-    public Task<IReadOnlyList<NamedItem>> NamedItemsAsync(bool collections) => Use<IReadOnlyList<NamedItem>>(async c =>
+    public Task<IReadOnlyList<NamedItem>> NamedItemsAsync() => Use<IReadOnlyList<NamedItem>>(async c =>
     {
-        using var cmd = Cmd(c, "SELECT id,name FROM " + (collections ? "collections" : "tags") + " ORDER BY name");
+        using var cmd = Cmd(c, "SELECT id,name FROM tags ORDER BY name");
         using var r = await cmd.ExecuteReaderAsync(); var list = new List<NamedItem>(); while (await r.ReadAsync()) list.Add(new(r.GetInt64(0), r.GetString(1))); return list;
     });
-    public Task<IReadOnlyList<NamedItem>> FaceItemsAsync(string faceId, bool collections) => Use<IReadOnlyList<NamedItem>>(async c =>
+    public Task<IReadOnlyList<NamedItem>> FaceItemsAsync(string faceId) => Use<IReadOnlyList<NamedItem>>(async c =>
     {
-        string table = collections ? "collections" : "tags", relation = collections ? "collection_faces" : "face_tags", key = collections ? "collection_id" : "tag_id";
+        const string table = "tags", relation = "face_tags", key = "tag_id";
         using var cmd = Cmd(c, $"SELECT n.id,n.name FROM {table} n JOIN {relation} r ON r.{key}=n.id WHERE r.face_id=$f ORDER BY n.name", ("$f", faceId));
         using var r = await cmd.ExecuteReaderAsync(); var list = new List<NamedItem>(); while (await r.ReadAsync()) list.Add(new(r.GetInt64(0), r.GetString(1))); return list;
     });
-    private static (string Table, string Relation, string Key) AnnotationTables(bool collections) =>
-        collections ? ("collections", "collection_faces", "collection_id") : ("tags", "face_tags", "tag_id");
     private static string AnnotationName(string name)
     {
         name = name.Trim();
         if (name.Length is < 1 or > 100) throw new ArgumentException("名称应为 1–100 个字符");
         return name;
     }
-    public Task<IReadOnlyList<NamedItem>> NamedItemCountsAsync(bool collections) => Use<IReadOnlyList<NamedItem>>(async c =>
+    public Task<IReadOnlyList<NamedItem>> NamedItemCountsAsync() => Use<IReadOnlyList<NamedItem>>(async c =>
     {
-        var (table, relation, key) = AnnotationTables(collections);
+        const string table = "tags", relation = "face_tags", key = "tag_id";
         using var cmd = Cmd(c, $"SELECT n.id,n.name,COUNT(r.face_id) FROM {table} n LEFT JOIN {relation} r ON r.{key}=n.id GROUP BY n.id ORDER BY n.name COLLATE NOCASE,n.id");
         using var r = await cmd.ExecuteReaderAsync(); var list = new List<NamedItem>();
         while (await r.ReadAsync()) list.Add(new(r.GetInt64(0), r.GetString(1), r.GetInt32(2)));
         return list;
     });
-    public async Task<NamedItem> CreateNamedItemAsync(string name, bool collections)
+    public async Task<NamedItem> CreateNamedItemAsync(string name, IEnumerable<string>? faceIds = null)
     {
-        name = AnnotationName(name); var (table, _, _) = AnnotationTables(collections);
+        name = AnnotationName(name); const string table = "tags";
+        var ids = faceIds?.Distinct().ToArray() ?? [];
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        PerformanceLog.Write("tag-create-start", 0, $"faces={ids.Length}");
         var item = await Use(async c =>
         {
+            using var tx = c.BeginTransaction();
             try { await Exec(c, $"INSERT INTO {table}(name) VALUES($n)", ("$n", name)); }
             catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
             { throw new ArgumentException("该名称已存在，请使用其他名称", ex); }
             using var cmd = Cmd(c, "SELECT last_insert_rowid()");
-            return new NamedItem(Convert.ToInt64(await cmd.ExecuteScalarAsync()), name, 0);
+            long id = Convert.ToInt64(await cmd.ExecuteScalarAsync());
+            foreach (string faceId in ids)
+                await Exec(c, "INSERT INTO face_tags(face_id,tag_id) VALUES($face,$tag)", ("$face", faceId), ("$tag", id));
+            tx.Commit();
+            return new NamedItem(id, name, ids.Length);
         });
+        PerformanceLog.Write("tag-create-committed", elapsed.Elapsed.TotalMilliseconds, $"tag={item.Id}; faces={ids.Length}");
         Changed?.Invoke(); return item;
     }
-    public async Task RenameNamedItemAsync(long id, string name, bool collections)
+    public async Task RenameNamedItemAsync(long id, string name)
     {
-        name = AnnotationName(name); var (table, _, _) = AnnotationTables(collections);
+        name = AnnotationName(name); const string table = "tags";
         await Use(async c =>
         {
             try
@@ -251,14 +268,17 @@ public sealed class Repository
             return 0;
         }); Changed?.Invoke();
     }
-    public async Task DeleteNamedItemAsync(long id, bool collections)
+    public async Task DeleteNamedItemAsync(long id)
     {
-        var (table, _, _) = AnnotationTables(collections);
+        const string table = "tags";
         await Use(c => Exec(c, $"DELETE FROM {table} WHERE id=$id", ("$id", id))); Changed?.Invoke();
     }
-    public async Task AnnotateByIdAsync(IEnumerable<string> ids, long itemId, bool collections, bool remove = false)
+    public async Task AnnotateByIdAsync(IEnumerable<string> ids, long itemId, bool remove = false)
     {
-        var faceIds = ids.Distinct().ToArray(); var (table, relation, key) = AnnotationTables(collections);
+        var faceIds = ids.Distinct().ToArray();
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        PerformanceLog.Write("tag-membership-start", 0, $"tag={itemId}; faces={faceIds.Length}; remove={remove}");
+        const string table = "tags", relation = "face_tags", key = "tag_id";
         await Use(async c =>
         {
             using var tx = c.BeginTransaction();
@@ -270,16 +290,18 @@ public sealed class Repository
                     $"INSERT INTO {relation}(face_id,{key}) VALUES($f,$id) ON CONFLICT(face_id,{key}) DO NOTHING",
                     ("$f", id), ("$id", itemId));
             tx.Commit(); return 0;
-        }); Changed?.Invoke();
+        });
+        PerformanceLog.Write("tag-membership-committed", elapsed.Elapsed.TotalMilliseconds, $"tag={itemId}; faces={faceIds.Length}; remove={remove}");
+        Changed?.Invoke();
     }
     public async Task SetFavoriteAsync(IEnumerable<string> ids, bool favorite)
     {
         await Use(async c => { using var tx = c.BeginTransaction(); foreach (var id in ids) await Exec(c, "UPDATE faces SET favorite=$v WHERE id=$id", ("$v", favorite), ("$id", id)); tx.Commit(); return 0; }); Changed?.Invoke();
     }
-    public async Task AnnotateAsync(IEnumerable<string> ids, string name, bool collections, bool remove = false)
+    public async Task AnnotateAsync(IEnumerable<string> ids, string name, bool remove = false)
     {
         name = AnnotationName(name);
-        string table = collections ? "collections" : "tags", relation = collections ? "collection_faces" : "face_tags", key = collections ? "collection_id" : "tag_id";
+        const string table = "tags", relation = "face_tags", key = "tag_id";
         await Use(async c =>
         {
             using var tx = c.BeginTransaction();

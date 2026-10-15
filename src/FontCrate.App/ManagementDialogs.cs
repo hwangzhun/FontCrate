@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using FontCrate.Core;
 using FontCrate.App.Views;
 using Wpf.Ui.Controls;
 
@@ -49,6 +50,7 @@ public static class ManagementDialogs
     public static async Task<string[]> ChooseFontsAsync(ConfirmationService service, MainViewModel owner, HashSet<string> excluded, string name)
     {
         long cancellationVersion = service.CancellationVersion;
+        PerformanceLog.Write("font-picker-start", 0, $"excluded={excluded.Count}");
         using var picker = new FontPickerViewModel(owner, excluded);
         var browser = new ManagementFontBrowser { DataContext = picker, Width = 600, Height = 420 };
         var dialog = new ContentDialog
@@ -62,9 +64,22 @@ public static class ManagementDialogs
             { picker.Error = "请先选择要添加的字体。已关联的字体不会出现在列表中。"; }
         };
         dialog.Closing += (_, e) => e.Cancel = e.Result == ContentDialogResult.Primary && picker.SelectedFonts.Length == 0;
-        await picker.RefreshAsync();
-        if (owner.IsClosing || service.CancellationVersion != cancellationVersion) return [];
-        if (!await service.ShowContentAsync(dialog)) return [];
-        return picker.SelectedFonts.Select(f => f.Id).ToArray();
+        try
+        {
+            await picker.RefreshAsync();
+            if (owner.IsClosing || service.CancellationVersion != cancellationVersion) return [];
+            if (!await service.ShowContentAsync(dialog)) return [];
+            PerformanceLog.Write("font-picker-accepted", 0, $"selected={picker.SelectedFonts.Length}");
+            return picker.SelectedFonts.Select(f => f.Id).ToArray();
+        }
+        finally
+        {
+            // ContentDialog can finish before WPF delivers Unloaded. Detach while
+            // the picker is still alive so late lifecycle events cannot cancel a
+            // disposed preview token or start another preview.
+            browser.DataContext = null;
+            dialog.Content = null;
+            PerformanceLog.Write("font-picker-detached", 0);
+        }
     }
 }

@@ -20,9 +20,9 @@ public partial class SettingsPage : Page
     public SettingsPage(MainViewModel model, ThemeService theme)
     {
         this.model = model;
-        try { ProjectLicenseText = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "LICENSE")); }
+        try { ProjectLicenseText = AppAssets.ReadLegalText("LICENSE"); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ProjectLicenseText = "许可证文件无法读取：" + ex.Message; }
-        try { ThirdPartyText = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "THIRD-PARTY-NOTICES.md")); }
+        try { ThirdPartyText = AppAssets.ReadLegalText("NOTICES.txt"); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ThirdPartyText = "声明文件无法读取：" + ex.Message; }
         ThirdPartyComponents = ThirdPartyText.Split('\n')
             .Where(line => line.StartsWith("| ") && !line.StartsWith("| Dependency"))
@@ -43,8 +43,18 @@ public partial class SettingsPage : Page
         if (sender is FrameworkElement { Tag: string url } && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
             OpenTarget(url);
     }
-    private void OpenThirdPartyNotices(object sender, RoutedEventArgs e) => OpenTarget(Path.Combine(AppContext.BaseDirectory, "THIRD-PARTY-NOTICES.md"));
-    private void OpenLicenses(object sender, RoutedEventArgs e) => OpenTarget(Path.Combine(AppContext.BaseDirectory, "licenses"));
+    private void OpenThirdPartyNotices(object sender, RoutedEventArgs e) => OpenLegalFiles(true);
+    private void OpenLicenses(object sender, RoutedEventArgs e) => OpenLegalFiles(false);
+    private void OpenLegalFiles(bool notices)
+    {
+        try
+        {
+            string directory = AppAssets.ExportLegalFiles();
+            OpenTarget(notices ? Path.Combine(directory, "THIRD-PARTY-NOTICES.txt") : directory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { model.Status = "无法打开许可证：" + ex.Message; }
+    }
     private void OpenTarget(string target)
     {
         try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
