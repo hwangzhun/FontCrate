@@ -1,0 +1,34 @@
+name: Build release installer
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to package
+        required: true
+        default: v1.0.3
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build installer
+        shell: pwsh
+        run: |
+          # Older tags may not contain any workflows; publish.ps1 accepts an empty directory.
+          New-Item -ItemType Directory -Path .github -Force | Out-Null
+          ./tools/publish.ps1 -SkipTests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-installer
+          if-no-files-found: error
+          path: |
+            artifacts/FontCrate-Setup-*-win-x64.exe
+            artifacts/FontCrate-source.zip
+            artifacts/SHA256SUMS.txt
