@@ -84,12 +84,19 @@ public partial class MainViewModel
             var results = await Task.Run(() => action(token, progress));
             ResultText = string.Join("\n", results.Select(r => $"{(r.Success ? "✓" : "✕")} {r.Source}：{r.Message}" +
                 (r.OutputPath is null ? "" : " → " + r.OutputPath)));
+            Summarize(title, results.Select(r => r.Success), token.IsCancellationRequested, sourceAction: true);
             int success = results.Count(r => r.Success), failed = results.Count(r => !r.Success);
             Status = $"{title}{(token.IsCancellationRequested ? "已取消" : "完成")}：{success} 成功，{failed} 失败";
             ++operationGeneration;
             OperationProgress.Finish(Status, token.IsCancellationRequested ? "Canceled" : failed > 0 ? "Warning" : "Succeeded", !token.IsCancellationRequested);
         }
-        catch (Exception ex) { OperationProgress.Finish(ex.Message, "Failed", false); throw; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            Status = title + "已取消，未完成部分未继续执行"; ResultText = Status;
+            ResultSummary = new(title, "Canceled", Note: Status, SourceAction: true);
+            OperationProgress.Finish(Status, "Canceled", false);
+        }
+        catch (Exception ex) { RecordTaskFailure(title, ex); ResultSummary = ResultSummary with { SourceAction = true }; OperationProgress.Finish(ex.Message, "Failed", false); throw; }
         finally
         {
             ++operationGeneration;

@@ -28,7 +28,7 @@
       </ui:ListView>
       <ui:TextBlock Text="暂无字体，可调整搜索或添加字体。" IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Visibility="{Binding NoFonts, Converter={StaticResource BoolVisibility}}"/>
     </Grid>
-    <ui:Card Grid.Row="3" Padding="12" Margin="0,12,0,0" HorizontalContentAlignment="Stretch">
+    <ui:Card Grid.Row="3" Padding="16" Margin="0,12,0,0" HorizontalContentAlignment="Stretch">
       <StackPanel>
         <ui:TextBlock Text="{Binding PreviewMessage}" FontTypography="Caption" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
         <Image Source="{Binding PreviewImage}" Height="64" Stretch="Uniform" HorizontalAlignment="Left" Margin="0,6,0,0"/>

@@ -91,9 +91,10 @@ public partial class MainViewModel : ObservableObject
     public bool TaskIdle => !TaskBusy;
     partial void OnScanningChanged(bool value) => NotifyTaskState();
     partial void OnOperatingChanged(bool value) => NotifyTaskState();
+    partial void OnConfirmingChanged(bool value) => OnPropertyChanged(nameof(CanManage));
     private void NotifyTaskState()
     {
-        OnPropertyChanged(nameof(TaskBusy)); OnPropertyChanged(nameof(TaskIdle));
+        OnPropertyChanged(nameof(TaskBusy)); OnPropertyChanged(nameof(TaskIdle)); OnPropertyChanged(nameof(CanManage));
     }
     public bool IsReloadingFaces { get; private set; }
     public event Action<bool>? BeforeFacesReload;
@@ -104,7 +105,7 @@ public partial class MainViewModel : ObservableObject
     public IReadOnlyList<FaceRow> SelectedFaces
     {
         get => selectedFaces;
-        set { selectedFaces = value; OnPropertyChanged(nameof(SelectionCount)); TagPanel.NotifySelectionChanged(); }
+        set { selectedFaces = value; OnPropertyChanged(nameof(SelectionCount)); OnPropertyChanged(nameof(HasSelection)); TagPanel.NotifySelectionChanged(); }
     }
     public int SelectionCount => SelectedFaces.Count;
     public IReadOnlyList<int> GridCodes { get; private set; } = [];
@@ -128,7 +129,7 @@ public partial class MainViewModel : ObservableObject
         this.transfers = transfers;
         this.confirmations = confirmations;
         TagPanel = new(repository, ReloadAsync, Selection, item => ConfirmAnnotationDeletion(item, "标签"));
-        TagPanel.FilterChanged += () => { OnPropertyChanged(nameof(FilterSummary)); Schedule(); };
+        TagPanel.FilterChanged += () => { OnPropertyChanged(nameof(FilterSummary)); NotifyLibraryState(); Schedule(); };
         this.repository = repository; this.scanner = scanner; this.previews = previews; this.operations = operations; this.dispatcher = dispatcher;
         reloadTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(200), DispatcherPriority.Background, async (sender, _) =>
         { ((DispatcherTimer)sender!).Stop(); await Safe(ReloadAsync); }, dispatcher); reloadTimer.Stop();
@@ -141,10 +142,10 @@ public partial class MainViewModel : ObservableObject
     }
     private void Schedule(bool reset = true)
     { if (closing || syncingFilters) return; resetScroll |= reset; ++queryGeneration; reloadTimer.Stop(); reloadTimer.Start(); }
-    partial void OnSearchChanged(string value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
-    partial void OnSelectedSourceChanged(NamedItem? value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
-    partial void OnFavoritesOnlyChanged(bool value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
-    partial void OnStateChanged(string value) { OnPropertyChanged(nameof(FilterSummary)); Schedule(); }
+    partial void OnSearchChanged(string value) { OnPropertyChanged(nameof(FilterSummary)); NotifyLibraryState(); Schedule(); }
+    partial void OnSelectedSourceChanged(NamedItem? value) { OnPropertyChanged(nameof(FilterSummary)); NotifyLibraryState(); Schedule(); }
+    partial void OnFavoritesOnlyChanged(bool value) { OnPropertyChanged(nameof(FilterSummary)); NotifyLibraryState(); Schedule(); }
+    partial void OnStateChanged(string value) { OnPropertyChanged(nameof(FilterSummary)); NotifyLibraryState(); Schedule(); }
     partial void OnSelectedFaceChanged(FaceRow? value) { TagPanel.NotifySelectionChanged(); if (IsReloadingFaces) return; gridOffset = 0; _ = Safe(UpdateSelectionAsync); }
     partial void OnListPreviewTextChanged(string value) => ListPreviewsChanged?.Invoke();
     partial void OnPreviewTextChanged(string value) => _ = Safe(RenderPreviewAsync);
@@ -160,10 +161,11 @@ public partial class MainViewModel : ObservableObject
             await ReloadAsync(); InitialViewReady?.Invoke();
             var result = await Task.Run(() => operations.RecoverAsync(CancellationToken.None));
             ResultText = string.Join("\n", result.Select(x => x.Message));
+            Summarize("启动状态核对", result.Select(x => x.Success));
             Status = result.Any(x => !x.Success) ? "部分操作待处理，请查看结果" : "准备就绪";
             OperationProgress.Finish(Status, result.Any(x => !x.Success) ? "Warning" : "Succeeded");
         }
-        catch (Exception ex) { OperationProgress.Finish(ex.Message, "Failed", false); throw; }
+        catch (Exception ex) { RecordTaskFailure(OperationProgress.Message, ex); OperationProgress.Finish(ex.Message, "Failed", false); throw; }
         finally { try { await ReloadAsync(); } finally { Operating = false; } }
     }
     private static long? Filter(NamedItem? item) => item is null || item.Id == 0 ? null : item.Id;
@@ -187,46 +189,51 @@ public partial class MainViewModel : ObservableObject
     {
         var elapsed = Stopwatch.StartNew();
         long generation = ++queryGeneration;
-        PerformanceLog.Write("library-refresh-start", 0, $"generation={generation}");
-        reloadTimer.Stop();
-        var sources = await repository.SourcesAsync();
-        var tags = await repository.NamedItemCountsAsync();
-        if (generation != queryGeneration || closing) return;
-        long sourceSelection = SelectedSource?.Id ?? 0;
-        long tagSelection = TagPanel.SelectedFilter?.Id ?? 0;
-        syncingFilters = true;
+        LibraryLoading = true;
         try
         {
-            SyncItems(SourceItems, sources.Select(s => new NamedItem(s.Id, (s.Available ? "" : "[不可用] ") + s.Path)), "全部来源");
-            SelectedSource = SourceItems.FirstOrDefault(s => s.Id == sourceSelection) ?? SourceItems[0];
-            TagPanel.Refresh(tags);
-            if (sourceSelection != SelectedSource.Id || tagSelection != TagPanel.SelectedFilter?.Id)
-                resetScroll = true;
+            PerformanceLog.Write("library-refresh-start", 0, $"generation={generation}");
+            reloadTimer.Stop();
+            var sources = await repository.SourcesAsync();
+            var tags = await repository.NamedItemCountsAsync();
+            if (generation != queryGeneration || closing) return;
+            long sourceSelection = SelectedSource?.Id ?? 0;
+            long tagSelection = TagPanel.SelectedFilter?.Id ?? 0;
+            syncingFilters = true;
+            try
+            {
+                SyncItems(SourceItems, sources.Select(s => new NamedItem(s.Id, (s.Available ? "" : "[不可用] ") + s.Path)), "全部来源");
+                SelectedSource = SourceItems.FirstOrDefault(s => s.Id == sourceSelection) ?? SourceItems[0];
+                TagPanel.Refresh(tags);
+                if (sourceSelection != SelectedSource.Id || tagSelection != TagPanel.SelectedFilter?.Id)
+                    resetScroll = true;
+            }
+            finally { syncingFilters = false; }
+            OnPropertyChanged(nameof(FilterSummary)); NotifyLibraryState();
+            var q = new FaceQuery(Search, Filter(SelectedSource), Filter(TagPanel.SelectedFilter), FavoritesOnly, State);
+            var page = await repository.QueryAsync(q);
+            if (generation != queryGeneration || closing) return;
+            var previousFace = SelectedFace;
+            string? selected = previousFace?.Id; var selectedIds = SelectedFaces.Select(f => f.Id).ToHashSet();
+            bool scrollToTop = resetScroll; resetScroll = false;
+            BeforeFacesReload?.Invoke(scrollToTop);
+            IsReloadingFaces = true;
+            try
+            {
+                if (!Faces.SequenceEqual(page.Rows)) Faces.ReplaceAll(page.Rows);
+                SelectedFace = Faces.FirstOrDefault(f => f.Id == selected);
+                SelectedFaces = Faces.Where(f => selectedIds.Contains(f.Id)).ToArray();
+                RestoreSelection?.Invoke(SelectedFaces.OrderBy(f => f.Id == selected ? 0 : 1).ToArray());
+                // WPF can change SelectedItem while restoring a multi-selection.
+                SelectedFace = Faces.FirstOrDefault(f => f.Id == selected);
+            }
+            finally { IsReloadingFaces = false; AfterFacesReload?.Invoke(scrollToTop); }
+            Total = page.Total;
+            if (previousFace != SelectedFace) { gridOffset = 0; await Safe(UpdateSelectionAsync); }
+            else await Safe(RefreshAnnotationDetailsAsync);
+            PerformanceLog.Write("query-display", elapsed.Elapsed.TotalMilliseconds, $"generation={generation}; total={Total}");
         }
-        finally { syncingFilters = false; }
-        OnPropertyChanged(nameof(FilterSummary));
-        var q = new FaceQuery(Search, Filter(SelectedSource), Filter(TagPanel.SelectedFilter), FavoritesOnly, State);
-        var page = await repository.QueryAsync(q);
-        if (generation != queryGeneration || closing) return;
-        var previousFace = SelectedFace;
-        string? selected = previousFace?.Id; var selectedIds = SelectedFaces.Select(f => f.Id).ToHashSet();
-        bool scrollToTop = resetScroll; resetScroll = false;
-        BeforeFacesReload?.Invoke(scrollToTop);
-        IsReloadingFaces = true;
-        try
-        {
-            if (!Faces.SequenceEqual(page.Rows)) Faces.ReplaceAll(page.Rows);
-            SelectedFace = Faces.FirstOrDefault(f => f.Id == selected);
-            SelectedFaces = Faces.Where(f => selectedIds.Contains(f.Id)).ToArray();
-            RestoreSelection?.Invoke(SelectedFaces.OrderBy(f => f.Id == selected ? 0 : 1).ToArray());
-            // WPF can change SelectedItem while restoring a multi-selection.
-            SelectedFace = Faces.FirstOrDefault(f => f.Id == selected);
-        }
-        finally { IsReloadingFaces = false; AfterFacesReload?.Invoke(scrollToTop); }
-        Total = page.Total;
-        if (previousFace != SelectedFace) { gridOffset = 0; await Safe(UpdateSelectionAsync); }
-        else await Safe(RefreshAnnotationDetailsAsync);
-        PerformanceLog.Write("query-display", elapsed.Elapsed.TotalMilliseconds, $"generation={generation}; total={Total}");
+        finally { if (generation == queryGeneration) LibraryLoading = false; }
     }
 
     private static void SyncItems(ObservableCollection<NamedItem> target, IEnumerable<NamedItem> values, string all)
@@ -277,7 +284,7 @@ public partial class MainViewModel : ObservableObject
         Scanning = true;
         var token = scanCancellation.Token;
         var scanElapsed = Stopwatch.StartNew();
-        int sourceNumber = 0, sourceCount = 0, errors = 0, processed = 0;
+        int sourceNumber = 0, sourceCount = 0, errors = 0, processed = 0, scanSuccess = 0;
         bool complete = true;
         ScanProgress? latestProgress = null;
         var scanWork = Task.Run(async () =>
@@ -301,7 +308,8 @@ public partial class MainViewModel : ObservableObject
                     });
                 });
                 var result = await scanner.ScanAsync(source, verify, progress, token);
-                errors += result.Errors; processed += result.Discovered; complete &= result.Complete;
+                errors += result.Errors; processed += result.Discovered; scanSuccess += result.Parsed + result.Unchanged; complete &= result.Complete;
+                latestProgress = null;
                 PerformanceLog.Write(verify ? "scan-verify" : "scan-incremental", scanElapsed.Elapsed.TotalMilliseconds,
                     $"parsed={result.Parsed};unchanged={result.Unchanged};errors={result.Errors};complete={result.Complete}");
             }
@@ -316,6 +324,8 @@ public partial class MainViewModel : ObservableObject
             ScanProgress.Caption = "正在核对系统状态…";
             await Task.Run(() => operations.RefreshAsync(token));
             Status = sourceCount == 0 ? "没有可扫描的来源，请添加目录" : $"扫描结束：{sourceCount} 个来源，{processed} 个文件，{errors} 个错误";
+            ResultText = Status;
+            ResultSummary = new("字体扫描", errors > 0 || !complete || sourceCount == 0 ? "Warning" : "Succeeded", scanSuccess, errors, Note: $"已发现 {processed} 个文件 · {errors} 个错误（含来源错误）", SourceAction: true);
             ScanProgress.Finish(Status, errors > 0 || !complete || sourceCount == 0 ? "Warning" : "Succeeded");
         }
         catch (OperationCanceledException)
@@ -323,9 +333,11 @@ public partial class MainViewModel : ObservableObject
             if (latestProgress is { } p)
                 ScanProgress.Report(p.Processed, p.Discovered, p.EnumerationComplete, "扫描已取消", $"已处理 {p.Processed}/{p.Discovered}");
             Status = "扫描已取消，既有位置保留";
+            ResultText = Status + (latestProgress is { } snapshot ? $" · 当前来源已处理 {snapshot.Processed}/{snapshot.Discovered}" : "");
+            ResultSummary = new("字体扫描", "Canceled", scanSuccess + (latestProgress?.Parsed ?? 0) + (latestProgress?.Unchanged ?? 0), errors + (latestProgress?.Errors ?? 0), Note: ResultText, SourceAction: true);
             ScanProgress.Finish(Status + (latestProgress is { } last ? $" · 当前来源已处理 {last.Processed}/{last.Discovered} 个文件" : ""), "Canceled", false);
         }
-        catch (Exception ex) { ScanProgress.Finish(ex.Message, "Failed", false); throw; }
+        catch (Exception ex) { RecordTaskFailure("字体扫描", ex); ScanProgress.Finish(ex.Message, "Failed", false); throw; }
         finally
         {
             ++scanGeneration;
@@ -393,13 +405,20 @@ public partial class MainViewModel : ObservableObject
             var task = Task.Run(() => operations.RunAsync(action, selection, token, progress));
             var result = await task;
             ResultText = string.Join("\n", result.Select(r => $"{(r.Success ? "✓" : "✕")} {r.Hash[..8]}：{r.Message}"));
+            Summarize(actionName, result.Select(r => r.Success), token.IsCancellationRequested, selection.Select(f => f.Hash).Distinct().Count());
             Status = $"{(token.IsCancellationRequested ? "操作已取消" : "操作完成")}：{result.Count(r => r.Success)} 成功，{result.Count(r => !r.Success)} 失败";
             ++operationGeneration;
             OperationProgress.Report(result.Count, selection.Select(f => f.Hash).Distinct().Count(), true, actionName, $"已处理 {result.Count} 个文件");
             OperationProgress.Finish(Status, token.IsCancellationRequested ? "Canceled" : result.Any(r => !r.Success) ? "Failed" : "Succeeded",
                 !token.IsCancellationRequested);
         }
-        catch (Exception ex) { OperationProgress.Finish(ex.Message, "Failed", false); throw; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            Status = "操作已取消，未完成部分未继续执行"; ResultText = Status;
+            ResultSummary = new(actionName, "Canceled", Note: Status);
+            OperationProgress.Finish(Status, "Canceled", false);
+        }
+        catch (Exception ex) { RecordTaskFailure(OperationProgress.Message, ex); OperationProgress.Finish(ex.Message, "Failed", false); throw; }
         finally
         {
             ++operationGeneration;
@@ -425,10 +444,11 @@ public partial class MainViewModel : ObservableObject
         {
             var results = await Task.Run(() => operations.RecoverAsync(CancellationToken.None));
             ResultText = string.Join("\n", results.Select(r => r.Message));
+            Summarize("字体状态核对与清理", results.Select(r => r.Success));
             Status = results.Any(r => !r.Success) ? "部分状态待处理，请查看操作结果" : "状态核对完成";
             OperationProgress.Finish(Status, results.Any(r => !r.Success) ? "Warning" : "Succeeded");
         }
-        catch (Exception ex) { OperationProgress.Finish(ex.Message, "Failed", false); throw; }
+        catch (Exception ex) { RecordTaskFailure(OperationProgress.Message, ex); OperationProgress.Finish(ex.Message, "Failed", false); throw; }
         finally { try { await ReloadAsync(); } finally { Operating = false; } }
     });
     [RelayCommand] private void Locate()
@@ -436,7 +456,7 @@ public partial class MainViewModel : ObservableObject
         if (SelectedFace?.Path is not string path) return;
         var start = new ProcessStartInfo("explorer.exe") { UseShellExecute = true }; start.Arguments = "/select,\"" + path + "\""; Process.Start(start);
     }
-    [RelayCommand] private Task ShowErrorsAsync() => Safe(async () => { var errors = await repository.ErrorsAsync(); ResultText = errors.Count == 0 ? "没有扫描错误" : string.Join("\n", errors.Select(e => e.Path + "\n" + e.Message)); ResultsRequested?.Invoke(); });
+    [RelayCommand] private Task ShowErrorsAsync() => Safe(async () => { var errors = await repository.ErrorsAsync(); ResultSummary = new("扫描错误记录", errors.Count == 0 ? "Succeeded" : "Warning", Failed: errors.Count, SourceAction: true); ResultText = errors.Count == 0 ? "没有扫描错误" : string.Join("\n", errors.Select(e => e.Path + "\n" + e.Message)); ResultsRequested?.Invoke(); });
     [RelayCommand] private void Exit() => ExitRequested?.Invoke();
     private async Task UpdateSelectionAsync()
     {
@@ -526,7 +546,7 @@ public partial class MainViewModel : ObservableObject
     public void ClearPreviews() { SuspendPreviews(); PreviewImage = null; GridImage = null; previews.ClearCache(); }
     public void RestorePreviews() { hidden = false; _ = Safe(RenderPreviewAsync); }
     private async Task Safe(Func<Task> work)
-    { try { await work(); } catch (OperationCanceledException) { } catch (Exception e) { Status = e.Message; ResultText = e.ToString(); PerformanceLog.Write("ui-operation-error", 0, e.ToString()); } }
+    { try { await work(); } catch (OperationCanceledException) { } catch (Exception e) { if (!ReferenceEquals(presentedError, e)) RecordTaskFailure("操作异常", e); PerformanceLog.Write("ui-operation-error", 0, e.ToString()); } }
     public async Task<IReadOnlyList<OperationResult>> ShutdownAsync()
     {
         closing = true; reloadTimer.Stop(); scanCancellation?.Cancel(); previewCancellation?.Cancel(); operationCancellation?.Cancel();
@@ -540,6 +560,7 @@ public partial class MainViewModel : ObservableObject
             var results = await Task.Run(operations.ExitAsync);
             var failures = results.Where(r => !r.Success).ToArray();
             ResultText = string.Join("\n", results.Select(r => r.Message));
+            Summarize("字体状态核对与清理", results.Select(r => r.Success));
             OperationProgress.Finish(failures.Length == 0 ? "临时字体已清理，可以退出" : "部分临时字体未能停用", failures.Length == 0 ? "Succeeded" : "Failed");
             if (failures.Length > 0) closing = false;
             else repository.Changed -= OnRepositoryChanged;

@@ -1,22 +1,22 @@
 <Page ScrollViewer.CanContentScroll="False" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:app="clr-namespace:FontCrate.App" x:Class="FontCrate.App.Views.SettingsPage" x:Name="SettingsRoot" Title="设置" Background="{DynamicResource ApplicationBackgroundBrush}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontFamily="Microsoft YaHei UI" FontSize="13">
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Margin="24,12,24,24">
-      <TextBlock Text="设置" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,20" />
-      <ui:Card Padding="20" Margin="0,0,0,16" HorizontalContentAlignment="Stretch">
+      <TextBlock Text="设置" Style="{StaticResource PageTitle}" Margin="0,0,0,20" />
+      <ui:Card Padding="16" Margin="0,0,0,16" HorizontalContentAlignment="Stretch">
         <StackPanel>
           <TextBlock Text="外观" Style="{StaticResource Heading}" />
           <TextBlock Text="界面、字体预览及字符网格同步切换；选择自动保存。" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,8,0,16" TextWrapping="Wrap" />
           <ComboBox ItemsSource="{Binding Options}" DisplayMemberPath="Name" SelectedValuePath="Mode" SelectedValue="{Binding Mode, Mode=TwoWay}" Width="220" HorizontalAlignment="Left" AutomationProperties.Name="界面主题" />
         </StackPanel>
       </ui:Card>
-      <ui:Card Padding="20" Margin="0,0,0,16" HorizontalContentAlignment="Stretch">
+      <ui:Card Padding="16" Margin="0,0,0,16" HorizontalContentAlignment="Stretch">
         <StackPanel>
           <TextBlock Text="托盘与退出" Style="{StaticResource Heading}" />
           <TextBlock Text="关闭窗口时可选择完全退出或最小化到托盘。托盘运行时临时字体仍然可用；完全退出会先停用临时字体。" TextWrapping="Wrap" Margin="0,8,0,16" />
           <ui:Button Content="退出并停用临时字体" Click="Exit" HorizontalAlignment="Left" />
         </StackPanel>
       </ui:Card>
-      <ui:Card Padding="20" HorizontalContentAlignment="Stretch">
+      <ui:Card Padding="16" HorizontalContentAlignment="Stretch">
         <StackPanel>
           <Grid Margin="0,0,0,16">
             <Grid.ColumnDefinitions><ColumnDefinition Width="128" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>

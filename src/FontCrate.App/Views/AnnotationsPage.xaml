@@ -5,7 +5,7 @@
       <ui:TextBlock Text="标签" FontTypography="Title"/>
       <ui:TextBlock Text="整理分类，在此浏览、预览和管理关联字体。" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,6,0,0"/>
     </StackPanel>
-    <ui:Card Grid.Row="1" Padding="12" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+    <ui:Card Grid.Row="1" Padding="16" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
       <views:CategoryManagementControl x:Name="TagManagement" DataContext="{Binding Tags}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
     </ui:Card>
   </Grid>

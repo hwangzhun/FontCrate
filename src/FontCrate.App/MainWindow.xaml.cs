@@ -33,6 +33,7 @@ public partial class MainWindow : FluentWindow
         };
         var provider = new PageProvider(pages);
         Navigation.SetPageProviderService(provider);
+        model.SourcesRequested += () => Navigation.Navigate(typeof(SourcesPage));
         model.ResultsRequested += () => Navigation.Navigate(typeof(TasksPage));
         theme.PreviewColorsChanged += model.SetPreviewColors;
         model.SetPreviewColors(theme.ForegroundArgb, theme.BackgroundArgb);

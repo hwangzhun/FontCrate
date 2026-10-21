@@ -51,6 +51,35 @@ internal static class Program
         using var previews = new TestPreview(); var dialogs = new ConfirmationService();
         var owner = new MainViewModel(repo, scanner, previews, new FontOperations(repo, new TestPlatform(root)), Dispatcher.CurrentDispatcher, dialogs);
         await owner.InitializeAsync();
+        // Exercise the actual template with data: an empty-library layout cannot catch
+        // Run.Text attempting to write back to the computed FaceRow.FileType property.
+        var bindingPage = new FontLibraryPage(owner);
+        var bindingGrid = (System.Windows.Controls.DataGrid)bindingPage.FindName("FontList");
+        var bindingColumn = (System.Windows.Controls.DataGridTemplateColumn)bindingGrid.Columns[0];
+        var cell = (System.Windows.Controls.StackPanel)bindingColumn.CellTemplate.LoadContent();
+        var metadata = cell.Children.OfType<System.Windows.Controls.TextBlock>().ElementAt(1);
+        var runs = metadata.Inlines.OfType<System.Windows.Documents.Run>().ToArray();
+        foreach (var face in new[] { faces[0], faces[1] with { Style = "Recycled style" } })
+        {
+            cell.DataContext = face;
+            await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.DataBind);
+            runs[0].GetBindingExpression(System.Windows.Documents.Run.TextProperty)!.UpdateTarget();
+            runs[2].GetBindingExpression(System.Windows.Documents.Run.TextProperty)!.UpdateTarget();
+            Check(runs[0].Text == face.FileType && runs[2].Text == face.Style,
+                "Font metadata binding failed on initial load or recycled data context");
+        }
+        Console.WriteLine("PASS populated font metadata template and recycled data context");
+        Check(!owner.LibraryLoading && !owner.ShowLibraryMessage && !owner.HasFilters, "Loaded library state is incorrect");
+        owner.ListPreviewText = "Independent list sample";
+        owner.PreviewPresetCommand.Execute("List");
+        Check(owner.PreviewText == owner.ListPreviewText, "Copy list preview failed");
+        owner.ListPreviewText = "Changed list sample";
+        Check(owner.PreviewText != owner.ListPreviewText, "Preview unexpectedly remained synchronized");
+        owner.PreviewPresetCommand.Execute("Chinese");
+        Check(owner.PreviewText.Contains("字体"), "Chinese preview preset failed");
+        owner.CommitPreviewSize("72"); owner.CommitPreviewSize("NaN");
+        Check(owner.FontSize == 72, "Invalid font size did not retain previous value");
+        Console.WriteLine("PASS library loading state, independent preview presets and size validation");
         owner.SelectedSource = owner.SourceItems.Single(s => s.Id == sources[0].Id);
         owner.TagPanel.SelectedFilter = owner.TagPanel.Items.Single(s => s.Id == beta.Id);
         owner.Search = "unrelated library search";
@@ -194,7 +223,38 @@ internal static class Program
                 { RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent });
             Check(fontList.SelectedItems.Count == 1 && Equals(fontList.SelectedItem, fontList.Items[2]),
                 "Right-click on unselected row did not replace selection");
-            Console.WriteLine("PASS library 70/30 layout, compact widths and right-click selection");
+            var selectionIds = owner.SelectedFaces.Select(f => f.Id).ToArray();
+            var previewText = owner.PreviewText;
+            libraryPage.Measure(new Size(800, 700));
+            libraryPage.Arrange(new Rect(new Size(800, 700))); libraryPage.UpdateLayout();
+            var listPane = (FrameworkElement)libraryPage.FindName("ListPane");
+            var previewPane = (FrameworkElement)libraryPage.FindName("PreviewPane");
+            Check(listPane.Visibility == Visibility.Visible && previewPane.Visibility == Visibility.Collapsed, "Compact library did not default to list");
+            ((Wpf.Ui.Controls.Button)libraryPage.FindName("PreviewToggle")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            libraryPage.UpdateLayout();
+            Check(listPane.Visibility == Visibility.Collapsed && previewPane.Visibility == Visibility.Visible, "Compact preview switch failed");
+            ((Wpf.Ui.Controls.Button)libraryPage.FindName("PreviewBack")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            libraryPage.UpdateLayout();
+            Check(listPane.Visibility == Visibility.Visible && previewPane.Visibility == Visibility.Collapsed, "Return to font list failed");
+            Check(selectionIds.SequenceEqual(owner.SelectedFaces.Select(f => f.Id)) && owner.PreviewText == previewText, "Layout switch lost selection or preview text");
+            // Repeated measure/arrange must settle: preview height cannot feed back into its parent.
+            var previewContent = (FrameworkElement)libraryPage.FindName("PreviewContent");
+            foreach (var size in new[] { new Size(1400, 960), new Size(1200, 800), new Size(1050, 700) })
+            {
+                libraryPage.Measure(size); libraryPage.Arrange(new Rect(size)); libraryPage.UpdateLayout();
+                var initial = previewContent.RenderSize;
+                for (int pass = 0; pass < 8; pass++)
+                {
+                    libraryPage.InvalidateMeasure(); libraryPage.Measure(size);
+                    libraryPage.Arrange(new Rect(size)); libraryPage.UpdateLayout();
+                    Check(Math.Abs(previewContent.ActualHeight - initial.Height) < 1,
+                        $"Preview layout did not converge at {size}: {initial.Height} -> {previewContent.ActualHeight}");
+                    Check(double.IsFinite(previewContent.ActualHeight) && previewContent.ActualHeight < 1500,
+                        "Preview height grew beyond the bounded viewport");
+                }
+            }
+            Console.WriteLine("PASS stable repeated preview layout at three window sizes");
+            Console.WriteLine("PASS library wide/compact layouts, preview switching and stable selection");
         }
         Console.WriteLine("PASS accepted picker teardown, repeated tagging and library batch assignment");
         var writeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -234,6 +294,8 @@ internal static class Program
     {
         var cards = workspace.Children.OfType<Card>().ToArray();
         var contents = cards.Select(c => c.Content).ToArray();
+        var visibility = cards.Select(c => c.Visibility).ToArray();
+        var columns = cards.Select(System.Windows.Controls.Grid.GetColumn).ToArray();
         // A fresh root avoids the page layout manager restoring old arrange bounds.
         var isolated = new System.Windows.Controls.Grid();
         foreach (var column in workspace.ColumnDefinitions)
@@ -247,7 +309,14 @@ internal static class Program
         try
         {
             // Exercise the actual WPF-UI card templates without Wine's font shaper.
-            foreach (var card in cards) card.Content = new System.Windows.Controls.Grid();
+            isolated.ColumnDefinitions[0].Width = new GridLength(280);
+            isolated.ColumnDefinitions[1].Width = new GridLength(16);
+            isolated.ColumnDefinitions[2].Width = new GridLength(1, GridUnitType.Star);
+            for (int i = 0; i < cards.Length; i++)
+            {
+                cards[i].Content = new System.Windows.Controls.Grid(); cards[i].Visibility = Visibility.Visible;
+                System.Windows.Controls.Grid.SetColumn(cards[i], i == 0 ? 0 : 2);
+            }
             foreach (var size in new[] { new Size(800, 500), new Size(1200, 760), new Size(800, 500) })
             {
                 isolated.Measure(size);
@@ -266,7 +335,11 @@ internal static class Program
         }
         finally
         {
-            for (int i = 0; i < cards.Length; i++) cards[i].Content = contents[i];
+            for (int i = 0; i < cards.Length; i++)
+            {
+                cards[i].Content = contents[i]; cards[i].Visibility = visibility[i];
+                System.Windows.Controls.Grid.SetColumn(cards[i], columns[i]);
+            }
             foreach (var card in cards)
             {
                 isolated.Children.Remove(card);
@@ -288,14 +361,30 @@ internal static class Program
             var detail = panes.Single(c => c.Name == "DetailCard");
             var workspace = (System.Windows.Controls.Grid)list.Parent;
             Check(double.IsNaN(workspace.Height), $"{name}: workspace uses a fixed height");
-            Check(Math.Abs(list.ActualHeight - workspace.ActualHeight) < 1 && Math.Abs(detail.ActualHeight - workspace.ActualHeight) < 1,
-                $"{name}: panes do not fill the workspace at {size}");
-            var listBounds = list.TransformToAncestor(page).TransformBounds(new Rect(list.RenderSize));
-            var detailBounds = detail.TransformToAncestor(page).TransformBounds(new Rect(detail.RenderSize));
-            Check(Math.Abs(listBounds.Top - detailBounds.Top) < 1 && Math.Abs(listBounds.Bottom - detailBounds.Bottom) < 1,
-                $"{name}: pane edges are not aligned at {size}");
-            Check(listBounds.Bottom <= size.Height && detailBounds.Right <= size.Width && detailBounds.Left >= listBounds.Right,
-                $"{name}: panes overflow or stack at {size}");
+            bool compact = workspace.ActualWidth < 800;
+            double contentHeight = workspace.RowDefinitions[1].ActualHeight;
+            Check(list.Visibility == Visibility.Visible, $"{name}: list is not initially visible");
+            Check(detail.Visibility == (compact ? Visibility.Collapsed : Visibility.Visible), $"{name}: incorrect detail visibility");
+            Check(Math.Abs(list.ActualHeight - contentHeight) < 1, $"{name}: list does not fill content row");
+            if (compact)
+            {
+                var switcher = (System.Windows.Controls.WrapPanel)workspace.FindName("PaneSwitch");
+                var buttons = switcher.Children.OfType<Wpf.Ui.Controls.Button>().ToArray();
+                buttons[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)); page.UpdateLayout();
+                Check(detail.Visibility == Visibility.Visible && list.Visibility == Visibility.Collapsed, $"{name}: detail switch failed");
+                Check(Math.Abs(detail.ActualHeight - contentHeight) < 1 && detail.ActualWidth <= workspace.ActualWidth, $"{name}: detail exceeds content bounds");
+                buttons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)); page.UpdateLayout();
+                Check(list.Visibility == Visibility.Visible && detail.Visibility == Visibility.Collapsed, $"{name}: return to list failed");
+            }
+            else
+            {
+                var listBounds = list.TransformToAncestor(page).TransformBounds(new Rect(list.RenderSize));
+                var detailBounds = detail.TransformToAncestor(page).TransformBounds(new Rect(detail.RenderSize));
+                Check(Math.Abs(listBounds.Top - detailBounds.Top) < 1 && Math.Abs(listBounds.Bottom - detailBounds.Bottom) < 1,
+                    $"{name}: pane edges are not aligned at {size}");
+                Check(listBounds.Bottom <= size.Height && detailBounds.Right <= size.Width && detailBounds.Left >= listBounds.Right,
+                    $"{name}: panes overflow at {size}");
+            }
             var selector = Descendants(list).OfType<Wpf.Ui.Controls.ListView>().Single();
             Check(selector.SelectionMode == System.Windows.Controls.SelectionMode.Single, $"{name}: sidebar allows multiple selection");
         }

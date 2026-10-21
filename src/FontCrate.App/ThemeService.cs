@@ -72,6 +72,13 @@ public sealed class ThemeService : ObservableObject, IDisposable
         background.A = 255;
         app.Resources["PreviewForeground"] = new SolidColorBrush(foreground);
         app.Resources["PreviewBackground"] = new SolidColorBrush(background);
+        bool dark = background.R * 0.299 + background.G * 0.587 + background.B * 0.114 < 128;
+        foreach (var (key, light, night) in new[]
+        {
+            ("InstalledStatusBrush", "#1D4ED8", "#93C5FD"), ("ActiveStatusBrush", "#15803D", "#86EFAC"),
+            ("WarningStatusBrush", "#92400E", "#FCD34D"), ("InactiveStatusBrush", "#64748B", "#CBD5E1"),
+            ("FailedStatusBrush", "#B91C1C", "#FCA5A5")
+        }) app.Resources[key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark ? night : light));
         uint fg = Argb(foreground), bg = Argb(background);
         if (fg == ForegroundArgb && bg == BackgroundArgb) return;
         ForegroundArgb = fg; BackgroundArgb = bg;

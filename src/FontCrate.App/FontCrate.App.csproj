@@ -4,9 +4,9 @@
     <AssemblyName>FontCrate</AssemblyName>
     <RootNamespace>FontCrate.App</RootNamespace>
     <Product>FontCrate</Product>
-    <Version>1.0.2</Version>
-    <AssemblyVersion>1.0.2.0</AssemblyVersion>
-    <FileVersion>1.0.2.0</FileVersion>
+    <Version>1.0.3</Version>
+    <AssemblyVersion>1.0.3.0</AssemblyVersion>
+    <FileVersion>1.0.3.0</FileVersion>
     <Authors>Hwangzhun</Authors>
     <Copyright>Copyright (C) 2026 Hwangzhun</Copyright>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>

@@ -1,13 +1,14 @@
 <Page ScrollViewer.CanContentScroll="False" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="FontCrate.App.Views.FontLibraryPage" Title="FontLibraryPage" Background="{DynamicResource ApplicationBackgroundBrush}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontFamily="Microsoft YaHei UI" FontSize="13">
   <!-- Page.CanContentScroll=False disables WPF UI's outer DynamicScrollViewer.
        Keep the DataGrid's own logical scrolling enabled for bounded virtualization. -->
-  <Grid Margin="16,8,16,0">
+  <Grid Margin="24,12,24,16">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
-    <Border Style="{StaticResource Panel}" Padding="12" Margin="0,0,0,12">
+    <Border Margin="0,0,0,16">
       <StackPanel>
+        <TextBlock Text="字体库" Style="{StaticResource PageTitle}" Margin="0,0,0,16" />
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -21,9 +22,9 @@
           <ComboBox ItemsSource="{Binding TagPanel.FilterItems}" SelectedItem="{Binding TagPanel.SelectedFilter}" DisplayMemberPath="Name" Width="140" Margin="0,0,8,8" AutomationProperties.Name="标签筛选" />
           <ComboBox ItemsSource="{Binding States}" SelectedItem="{Binding State}" Width="125" Margin="0,0,12,8" AutomationProperties.Name="字体状态筛选" />
           <CheckBox Content="只看收藏" IsChecked="{Binding FavoritesOnly}" Margin="0,5,12,8" />
-          <ui:Button Content="清除筛选" Command="{Binding ClearFiltersCommand}" Margin="0,0,0,8" />
+          <ui:Button Content="清除筛选" Visibility="{Binding HasFilters, Converter={StaticResource BoolVisibility}}" Command="{Binding ClearFiltersCommand}" Margin="0,0,0,8" />
         </WrapPanel>
-        <TextBlock Text="{Binding FilterSummary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding FilterSummary}" FontSize="11" />
+        <TextBlock Visibility="{Binding HasFilters, Converter={StaticResource BoolVisibility}}" Text="{Binding FilterSummary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding FilterSummary}" FontSize="12" />
       </StackPanel>
     </Border>
     <Grid x:Name="LibraryWorkspace" Grid.Row="1">
@@ -32,13 +33,13 @@
         <ColumnDefinition Width="12" />
         <ColumnDefinition Width="3*" MinWidth="320" />
       </Grid.ColumnDefinitions>
-      <Border Grid.Column="0" Style="{StaticResource Panel}" Padding="12">
+      <Border x:Name="ListPane" Grid.Column="0" Style="{StaticResource Panel}" Padding="16">
         <DockPanel>
           <ScrollViewer DockPanel.Dock="Top" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="220">
             <StackPanel>
               <DockPanel Margin="2,2,2,12">
                 <TextBlock DockPanel.Dock="Left" Text="字体列表" Style="{StaticResource Heading}" />
-                <TextBlock Text="连续浏览 · Ctrl / Shift 多选" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                <ui:Button x:Name="PreviewToggle" Content="显示预览" Click="TogglePreview" HorizontalAlignment="Right" ToolTip="显示或收起字体预览" />
               </DockPanel>
               <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
@@ -48,23 +49,23 @@
                 <TextBlock Text="列表预览" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="2,0,10,6" />
                 <ui:TextBox Grid.Column="1" Text="{Binding ListPreviewText, UpdateSourceTrigger=PropertyChanged}" MaxLength="256" ToolTip="设置所有列表行的预览内容，最多 256 个字符；右侧大预览独立设置。" AutomationProperties.Name="列表预览内容" />
               </Grid>
-              <WrapPanel>
+              <WrapPanel Visibility="{Binding HasSelection, Converter={StaticResource BoolVisibility}}">
                 <WrapPanel.Style>
                   <Style TargetType="WrapPanel">
                     <Style.Triggers>
-                      <DataTrigger Binding="{Binding Operating}" Value="True">
+                      <DataTrigger Binding="{Binding CanManage}" Value="False">
                         <Setter Property="IsEnabled" Value="False" />
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
                 </WrapPanel.Style>
-                <ui:Button Content="临时启用" Appearance="Primary" Command="{Binding ActivateCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon Play24}" />
-                <ui:Button Content="停用临时字体" ToolTip="撤销本工具的临时启用，保留字体原文件和持久安装。" Command="{Binding DeactivateCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon Stop24}" />
-                <ui:Button Content="安装" Command="{Binding InstallCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon ArrowDownload24}" />
-                <ui:Button Content="卸载已安装字体" ToolTip="仅卸载由本工具持久安装到当前用户的字体。" Command="{Binding UninstallCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon Delete24}" />
-                <ui:Button Content="收藏" Command="{Binding FavoriteCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon Star24}" />
+                <TextBlock Text="{Binding SelectionCount, StringFormat=已选 {0} 项}" VerticalAlignment="Center" Margin="0,0,8,8" />
+                <ui:Button Content="临时启用" Appearance="Primary" Command="{Binding ActivateCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon Play24}" />
+                <ui:Button Content="安装" Command="{Binding InstallCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon ArrowDownload24}" />
+                <ui:Button Content="收藏" Command="{Binding FavoriteCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon Star24}" />
+                <ui:Button Content="更多操作" Click="MoreActions" Margin="0,0,8,8" />
               </WrapPanel>
-              <Expander Header="标签" Margin="2,3,2,10">
+              <Expander x:Name="TagAssignment" Header="标签分配" Visibility="Collapsed" Margin="2,3,2,8">
                 <StackPanel Margin="0,10,0,0">
                   <ContentControl Content="{Binding TagPanel}" ContentTemplate="{StaticResource AnnotationAssignmentTemplate}" />
                 </StackPanel>
@@ -76,53 +77,24 @@
               <TextBlock Text="{Binding Total, StringFormat=共 {0:N0} 个字体}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
               <TextBlock Text="{Binding SelectionCount, StringFormat=已选 {0:N0} 项}" Foreground="{DynamicResource AccentFillColorDefaultBrush}" HorizontalAlignment="Right" />
             </DockPanel>
-            <WrapPanel Margin="0,8,0,0" ToolTip="灯可并列出现；悬停字体状态查看说明。来源不可用不代表字体未安装。">
-              <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                <Ellipse Width="7" Height="7" Fill="#2563EB" Margin="0,0,4,0" />
-                <TextBlock Text="已安装" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                <Ellipse Width="7" Height="7" Fill="#16A34A" Margin="0,0,4,0" />
-                <TextBlock Text="临时启用" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                <Ellipse Width="7" Height="7" Fill="#F59E0B" Margin="0,0,4,0" />
-                <TextBlock Text="来源不可用" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
-              <StackPanel Orientation="Horizontal">
-                <Ellipse Width="7" Height="7" Fill="#94A3B8" Margin="0,0,4,0" />
-                <TextBlock Text="未安装 / 未启用" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              </StackPanel>
-            </WrapPanel>
+
           </StackPanel>
           <Grid>
-            <DataGrid x:Name="FontList" ItemsSource="{Binding Faces}" SelectedItem="{Binding SelectedFace}" SelectionChanged="SelectionChanged" SelectionMode="Extended" SelectionUnit="FullRow" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Item" ScrollViewer.CanContentScroll="True" GridLinesVisibility="None" HeadersVisibility="Column" BorderThickness="0" Background="{DynamicResource PreviewBackground}" RowHeight="88" HorizontalScrollBarVisibility="Auto">
+            <DataGrid x:Name="FontList" ItemsSource="{Binding Faces}" SelectedItem="{Binding SelectedFace}" SelectionChanged="SelectionChanged" SelectionMode="Extended" SelectionUnit="FullRow" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Item" ScrollViewer.CanContentScroll="True" GridLinesVisibility="None" HeadersVisibility="Column" BorderThickness="0" Background="{DynamicResource PreviewBackground}" RowHeight="108" HorizontalScrollBarVisibility="Auto">
               <DataGrid.Columns>
                 <DataGridTemplateColumn Header="字体与预览" Width="*" MinWidth="160">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
                       <StackPanel Margin="10,8">
                         <TextBlock Text="{Binding FullName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding FullName}" />
-                        <Border Height="44" ClipToBounds="True">
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,4">
+                        <!-- Run.Text defaults to TwoWay; these metadata fields are display-only. -->
+                        <Run Text="{Binding FileType, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Style, Mode=OneWay}" />
+                      </TextBlock>
+                      <Border Height="44" ClipToBounds="True">
                           <Image Width="320" Height="72" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="None" Loaded="ThumbnailLoaded" Unloaded="ThumbnailUnloaded" DataContextChanged="ThumbnailContextChanged" />
                         </Border>
                       </StackPanel>
-                    </DataTemplate>
-                  </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="类型" Width="62">
-                  <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate>
-                      <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="4" Padding="5,3" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip="字体文件格式">
-                        <TextBlock Text="{Binding FileType}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                      </Border>
-                    </DataTemplate>
-                  </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="风格" Width="70">
-                  <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate>
-                      <TextBlock Text="{Binding Style}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Style}" VerticalAlignment="Center" Margin="5" />
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
@@ -133,48 +105,46 @@
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="状态" Width="88">
+                <DataGridTemplateColumn Header="状态" Width="130">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
                       <StackPanel VerticalAlignment="Center" Margin="6" ToolTip="{Binding Status}" AutomationProperties.Name="{Binding Status}">
-                        <WrapPanel>
-                          <Ellipse Width="10" Height="10" Margin="0,0,5,0" Fill="#2563EB" Visibility="{Binding Installed, Converter={StaticResource BoolVisibility}}" ToolTip="已安装" />
-                          <Ellipse Width="10" Height="10" Margin="0,0,5,0" Fill="#16A34A" Visibility="{Binding Active, Converter={StaticResource BoolVisibility}}" ToolTip="临时启用" />
-                          <Ellipse Width="10" Height="10" Margin="0,0,5,0" Fill="#F59E0B" Visibility="{Binding SourceUnavailable, Converter={StaticResource BoolVisibility}}" ToolTip="来源不可用" />
-                          <Ellipse Width="10" Height="10" Margin="0,0,5,0" Fill="#94A3B8" Visibility="{Binding Inactive, Converter={StaticResource BoolVisibility}}" ToolTip="未安装 / 未启用" />
-                        </WrapPanel>
-                        <TextBlock Text="{Binding Locations, StringFormat={}{0} 个位置}" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,6,0,0" Visibility="{Binding Duplicate, Converter={StaticResource BoolVisibility}}" />
+                        <TextBlock Text="● 已安装" FontSize="12" Foreground="{DynamicResource InstalledStatusBrush}" Visibility="{Binding Installed, Converter={StaticResource BoolVisibility}}" Margin="0,1" />
+                        <TextBlock Text="▶ 临时启用" FontSize="12" Foreground="{DynamicResource ActiveStatusBrush}" Visibility="{Binding Active, Converter={StaticResource BoolVisibility}}" Margin="0,1" />
+                        <TextBlock Text="⚠ 来源不可用" FontSize="12" Foreground="{DynamicResource WarningStatusBrush}" Visibility="{Binding SourceUnavailable, Converter={StaticResource BoolVisibility}}" Margin="0,1" />
+                        <TextBlock Text="○ 未启用" FontSize="12" Foreground="{DynamicResource InactiveStatusBrush}" Visibility="{Binding Inactive, Converter={StaticResource BoolVisibility}}" Margin="0,1" />
+
+                        <TextBlock Text="{Binding Locations, StringFormat={}{0} 个位置}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,6,0,0" Visibility="{Binding Duplicate, Converter={StaticResource BoolVisibility}}" />
                       </StackPanel>
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
               </DataGrid.Columns>
             </DataGrid>
-            <TextBlock Text="没有匹配的字体&#10;添加目录或调整筛选条件" TextAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-              <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                  <Setter Property="Visibility" Value="Collapsed" />
-                  <Style.Triggers>
-                    <DataTrigger Binding="{Binding Total}" Value="0">
-                      <Setter Property="Visibility" Value="Visible" />
-                    </DataTrigger>
-                  </Style.Triggers>
-                </Style>
-              </TextBlock.Style>
-            </TextBlock>
+            <Border Background="{DynamicResource PreviewBackground}" Visibility="{Binding ShowLibraryMessage, Converter={StaticResource BoolVisibility}}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="300">
+              <ProgressBar IsIndeterminate="True" Height="3" Margin="0,0,0,16" Visibility="{Binding LibraryLoading, Converter={StaticResource BoolVisibility}}" />
+              <TextBlock Text="{Binding LibraryMessage}" TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,12" />
+              <ui:Button Content="{Binding LibraryActionLabel}" Command="{Binding LibraryEmptyActionCommand}" HorizontalAlignment="Center" Visibility="{Binding ShowLibraryAction, Converter={StaticResource BoolVisibility}}" />
+            </StackPanel>
+            </Border>
           </Grid>
         </DockPanel>
       </Border>
-      <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="{DynamicResource ControlStrokeColorDefaultBrush}" ResizeBehavior="PreviousAndNext" />
-      <Border Grid.Column="2" Style="{StaticResource Panel}" Padding="14">
+      <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="{DynamicResource ControlStrokeColorDefaultBrush}" ResizeBehavior="PreviousAndNext" />
+      <Border x:Name="PreviewPane" Grid.Column="2" Style="{StaticResource Panel}" Padding="16">
         <DockPanel>
-          <DockPanel DockPanel.Dock="Top" Margin="4,2,4,12">
-            <TextBlock Text="字体预览" Style="{StaticResource Heading}" />
-            <TextBlock Text="{Binding SelectedFace.FullName, TargetNullValue=请选择字体}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="16,0,0,0" VerticalAlignment="Center" />
-          </DockPanel>
-          <TabControl BorderThickness="0" Background="{DynamicResource PreviewBackground}">
+          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <ui:Button x:Name="PreviewBack" Content="返回列表" Click="TogglePreview" HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="Collapsed" />
+            <TextBlock Text="{Binding SelectedFace.FullName, TargetNullValue=请选择字体}" Style="{StaticResource Heading}" TextTrimming="CharacterEllipsis" ToolTip="{Binding SelectedFace.FullName}" />
+            <TextBlock Text="{Binding SelectedFace.Style}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
+            <TextBlock Text="{Binding SelectedFace.Status}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
+          </StackPanel>
+          <TabControl x:Name="PreviewTabs" BorderThickness="0" Background="{DynamicResource PreviewBackground}">
             <TabItem Header="预览与详情">
-              <Grid Margin="0,12,0,0">
+              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <!-- Keep scrolling content independent of its parent’s measured height. -->
+              <Grid x:Name="PreviewContent" Margin="0,12,0,0">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
@@ -182,13 +152,21 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
+                <StackPanel>
+                  <WrapPanel Margin="0,0,0,8">
+                    <ui:Button Content="中文" Command="{Binding PreviewPresetCommand}" CommandParameter="Chinese" Margin="0,0,8,8" />
+                    <ui:Button Content="英文" Command="{Binding PreviewPresetCommand}" CommandParameter="English" Margin="0,0,8,8" />
+                    <ui:Button Content="数字" Command="{Binding PreviewPresetCommand}" CommandParameter="Numbers" Margin="0,0,8,8" />
+                    <ui:Button Content="使用列表文字" Command="{Binding PreviewPresetCommand}" CommandParameter="List" Margin="0,0,8,8" />
+                  </WrapPanel>
                 <ui:TextBox Text="{Binding PreviewText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" Height="72" MaxLength="4096" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="预览文字" />
+                </StackPanel>
                 <DockPanel Grid.Row="1" Margin="2,8,2,14">
                   <TextBlock DockPanel.Dock="Left" Text="字号" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,12,0" />
-                  <TextBlock DockPanel.Dock="Right" Text="{Binding FontSize, StringFormat={}{0:F0} px}" Width="65" TextAlignment="Right" />
+                  <ui:TextBox x:Name="FontSizeInput" DockPanel.Dock="Right" Text="{Binding FontSize, Mode=OneWay, StringFormat={}{0:0.##}}" Width="64" LostFocus="CommitFontSize" KeyDown="FontSizeKeyDown" AutomationProperties.Name="预览字号，8 至 192 像素" ToolTip="8–192 px；Enter 确认" />
                   <Slider Minimum="8" Maximum="192" Value="{Binding FontSize}" AutomationProperties.Name="预览字号" />
                 </DockPanel>
-                <Border Grid.Row="2" Background="{DynamicResource PreviewBackground}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                <Border Grid.Row="2" Height="240" Background="{DynamicResource PreviewBackground}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
                   <ScrollViewer x:Name="PreviewViewport" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" SizeChanged="PreviewViewportSizeChanged" Padding="8">
                     <Grid>
                       <Image Source="{Binding PreviewImage}" Stretch="None" HorizontalAlignment="Center" VerticalAlignment="Top" />
@@ -207,18 +185,19 @@
                     </Grid>
                   </ScrollViewer>
                 </Border>
-                <TextBlock Grid.Row="3" Text="{Binding MissingText}" TextWrapping="Wrap" Foreground="{DynamicResource SystemFillColorCautionBrush}" FontSize="11" Margin="3,10" />
+                <TextBlock Grid.Row="3" Text="{Binding MissingText}" TextWrapping="Wrap" Foreground="{DynamicResource SystemFillColorCautionBrush}" FontSize="12" Margin="3,10" />
                 <Expander Grid.Row="4" Header="字体详情与文件位置" Margin="3,4,3,0">
                   <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="240">
                     <StackPanel Margin="0,10,0,0">
                       <TextBlock Text="{Binding Details}" TextWrapping="Wrap" FontSize="12" />
                       <TextBlock Text="文件位置" FontWeight="SemiBold" Margin="0,14,0,8" />
                       <ui:TextBox Text="{Binding LocationsText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" />
-                      <ui:Button Content="在资源管理器中定位" Command="{Binding LocateCommand}" HorizontalAlignment="Left" Margin="0,0,6,6" Icon="{ui:SymbolIcon FolderOpen24}" />
+                      <ui:Button Content="在资源管理器中定位" Command="{Binding LocateCommand}" HorizontalAlignment="Left" Margin="0,0,8,8" Icon="{ui:SymbolIcon FolderOpen24}" />
                     </StackPanel>
                   </ScrollViewer>
                 </Expander>
               </Grid>
+              </ScrollViewer>
             </TabItem>
             <TabItem Header="字符网格">
               <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -227,8 +206,8 @@
                   <Image Source="{Binding GridImage}" Stretch="Uniform" MouseLeftButtonUp="CharacterClicked" />
                   <TextBlock Text="{Binding GridPageText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="3,12" />
                   <WrapPanel>
-                    <ui:Button Content="上一页" Command="{Binding PreviousCharactersCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon ArrowLeft24}" />
-                    <ui:Button Content="下一页" Command="{Binding NextCharactersCommand}" Margin="0,0,6,6" Icon="{ui:SymbolIcon ArrowRight24}" />
+                    <ui:Button Content="上一页" Command="{Binding PreviousCharactersCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon ArrowLeft24}" />
+                    <ui:Button Content="下一页" Command="{Binding NextCharactersCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon ArrowRight24}" />
                   </WrapPanel>
                 </StackPanel>
               </ScrollViewer>

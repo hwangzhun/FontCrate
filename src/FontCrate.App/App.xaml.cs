@@ -44,11 +44,13 @@ public partial class App : System.Windows.Application
             previews = new PreviewService(); var platform = new WindowsFontPlatform(data, parser);
             var operations = new FontOperations(repo, platform);
             confirmations = new ConfirmationService();
+            PerformanceLog.Write("startup-stage", startup.Elapsed.TotalMilliseconds, "create-theme");
             theme = new ThemeService(new SettingsStore(Path.Combine(data, "settings.json")));
             model = new MainViewModel(repo, scanner, previews, operations, Dispatcher, confirmations,
                 new FontTransferService(repo, parser, scanner, Path.Combine(data, "ImportedFonts")));
             model.InitialViewReady += () => PerformanceLog.Write("startup-interactive", startup.Elapsed.TotalMilliseconds);
             model.ExitRequested += async () => await ExitAsync();
+            PerformanceLog.Write("startup-stage", startup.Elapsed.TotalMilliseconds, "create-window");
             var window = new MainWindow(model, theme, confirmations); MainWindow = window;
             window.Closing += async (_, args) =>
             {
@@ -73,7 +75,9 @@ public partial class App : System.Windows.Application
                 }
                 finally { closePromptOpen = false; window.ResumeTaskDialog(); }
             };
+            PerformanceLog.Write("startup-stage", startup.Elapsed.TotalMilliseconds, "show-window");
             window.Show();
+            PerformanceLog.Write("startup-stage", startup.Elapsed.TotalMilliseconds, "window-shown");
             using (var iconStream = AppAssets.OpenTrayIcon())
             using (var icon = new System.Drawing.Icon(iconStream, 32, 32)) trayIcon = (System.Drawing.Icon)icon.Clone();
             tray = new Forms.NotifyIcon { Text = "FontCrate", Icon = trayIcon, Visible = true };
@@ -83,6 +87,7 @@ public partial class App : System.Windows.Application
             tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowWindow);
             // Let the native dialog host receive its first layout before displaying startup progress.
             await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+            PerformanceLog.Write("startup-stage", startup.Elapsed.TotalMilliseconds, "initial-layout-ready");
             if (!exiting) await model.InitializeAsync();
         }
         catch (Exception ex)

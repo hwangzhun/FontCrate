@@ -8,6 +8,15 @@
       <BooleanToVisibilityConverter x:Key="BoolVisibility" />
       <SolidColorBrush x:Key="PreviewBackground" Color="#FFFFFFFF" />
       <SolidColorBrush x:Key="PreviewForeground" Color="#FF1F293B" />
+      <SolidColorBrush x:Key="InstalledStatusBrush" Color="#2563EB" />
+      <SolidColorBrush x:Key="ActiveStatusBrush" Color="#16A34A" />
+      <SolidColorBrush x:Key="WarningStatusBrush" Color="#F59E0B" />
+      <SolidColorBrush x:Key="InactiveStatusBrush" Color="#94A3B8" />
+      <SolidColorBrush x:Key="FailedStatusBrush" Color="#DC2626" />
+      <Style x:Key="PageTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+      </Style>
       <Style x:Key="Panel" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
@@ -26,22 +35,22 @@
         <Setter Property="Width" Value="9" />
         <Setter Property="Height" Value="9" />
         <Setter Property="Margin" Value="0,0,7,0" />
-        <Setter Property="Fill" Value="#94A3B8" />
+        <Setter Property="Fill" Value="{DynamicResource InactiveStatusBrush}" />
         <Style.Triggers>
           <DataTrigger Binding="{Binding State}" Value="Running">
-            <Setter Property="Fill" Value="#2563EB" />
+            <Setter Property="Fill" Value="{DynamicResource InstalledStatusBrush}" />
           </DataTrigger>
           <DataTrigger Binding="{Binding State}" Value="Succeeded">
-            <Setter Property="Fill" Value="#16A34A" />
+            <Setter Property="Fill" Value="{DynamicResource ActiveStatusBrush}" />
           </DataTrigger>
           <DataTrigger Binding="{Binding State}" Value="Warning">
-            <Setter Property="Fill" Value="#F59E0B" />
+            <Setter Property="Fill" Value="{DynamicResource WarningStatusBrush}" />
           </DataTrigger>
           <DataTrigger Binding="{Binding State}" Value="Canceled">
-            <Setter Property="Fill" Value="#F59E0B" />
+            <Setter Property="Fill" Value="{DynamicResource WarningStatusBrush}" />
           </DataTrigger>
           <DataTrigger Binding="{Binding State}" Value="Failed">
-            <Setter Property="Fill" Value="#DC2626" />
+            <Setter Property="Fill" Value="{DynamicResource FailedStatusBrush}" />
           </DataTrigger>
         </Style.Triggers>
       </Style>
@@ -74,7 +83,7 @@
             <TextBlock Text="{Binding Message}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" FontSize="12" />
           </DockPanel>
           <ProgressBar Grid.Row="1" Maximum="100" Value="{Binding Value}" IsIndeterminate="{Binding Indeterminate}" />
-          <TextBlock Grid.Row="2" Text="{Binding Caption}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Caption}" />
+          <TextBlock Grid.Row="2" Text="{Binding Caption}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Caption}" />
         </Grid>
       </DataTemplate>
       <DataTemplate x:Key="AnnotationItemTemplate">
@@ -84,36 +93,36 @@
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
           <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-          <TextBlock Grid.Column="1" Text="{Binding FaceCount}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" ToolTip="关联字体数量，包含来源不可用的字体" />
+          <TextBlock Grid.Column="1" Text="{Binding FaceCount}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" ToolTip="关联字体数量，包含来源不可用的字体" />
         </Grid>
       </DataTemplate>
       <DataTemplate x:Key="AnnotationPanelTemplate">
         <StackPanel>
           <StackPanel IsEnabled="{Binding Ready}">
             <TextBlock Text="{Binding Title}" Style="{StaticResource Label}" />
-            <TextBlock Text="{Binding SearchLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" Margin="4,0,4,4" />
+            <TextBlock Text="{Binding SearchLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="4,0,4,4" />
             <ui:TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{Binding SearchLabel}" AutomationProperties.Name="{Binding SearchLabel}" Padding="7,5" />
             <ListBox ItemsSource="{Binding VisibleItems}" SelectedItem="{Binding SelectedVisibleItem, Mode=TwoWay}" ItemTemplate="{StaticResource AnnotationItemTemplate}" MinHeight="140" MaxHeight="300" AutomationProperties.Name="{Binding Title}" />
-            <TextBlock Text="没有匹配项，可新建或清空搜索" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="4,5" Visibility="{Binding NoMatches, Converter={StaticResource BoolVisibility}}" />
-            <TextBlock Text="{Binding ActiveFilterText}" ToolTip="{Binding ActiveFilterText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="4,5" Visibility="{Binding HasActiveFilter, Converter={StaticResource BoolVisibility}}" />
+            <TextBlock Text="没有匹配项，可新建或清空搜索" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="4,5" Visibility="{Binding NoMatches, Converter={StaticResource BoolVisibility}}" />
+            <TextBlock Text="{Binding ActiveFilterText}" ToolTip="{Binding ActiveFilterText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="4,5" Visibility="{Binding HasActiveFilter, Converter={StaticResource BoolVisibility}}" />
             <WrapPanel Margin="0,5,0,0">
-              <ui:Button Content="新建" Command="{Binding NewCommand}" Padding="7,5" Margin="0,0,6,6" />
-              <ui:Button Content="改名" Command="{Binding RenameCommand}" Padding="7,5" Margin="0,0,6,6" />
-              <ui:Button Content="删除" Command="{Binding DeleteCommand}" Padding="7,5" Margin="0,0,6,6" />
+              <ui:Button Content="新建" Command="{Binding NewCommand}" Padding="7,5" Margin="0,0,8,8" />
+              <ui:Button Content="改名" Command="{Binding RenameCommand}" Padding="7,5" Margin="0,0,8,8" />
+              <ui:Button Content="删除" Command="{Binding DeleteCommand}" Padding="7,5" Margin="0,0,8,8" />
             </WrapPanel>
             <Border Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="7" Padding="8" Margin="0,4,0,0" Visibility="{Binding Editing, Converter={StaticResource BoolVisibility}}">
               <StackPanel>
                 <TextBlock Text="{Binding EditorTitle}" FontWeight="SemiBold" Margin="0,0,0,6" />
                 <ui:TextBox Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}" MaxLength="100" ToolTip="名称为 1–100 个字符" AutomationProperties.Name="{Binding EditorTitle}" Padding="7,5" />
                 <WrapPanel>
-                  <ui:Button Content="保存" Command="{Binding SaveCommand}" Appearance="Primary" Padding="7,5" Margin="0,0,6,6" />
-                  <ui:Button Content="取消" Command="{Binding CancelCommand}" Padding="7,5" Margin="0,0,6,6" />
+                  <ui:Button Content="保存" Command="{Binding SaveCommand}" Appearance="Primary" Padding="7,5" Margin="0,0,8,8" />
+                  <ui:Button Content="取消" Command="{Binding CancelCommand}" Padding="7,5" Margin="0,0,8,8" />
                 </WrapPanel>
               </StackPanel>
             </Border>
           </StackPanel>
-          <TextBlock Text="{Binding Error}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" FontSize="11" Margin="4,4,4,0" AutomationProperties.LiveSetting="Polite" />
-          <TextBlock Text="正在保存…" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" Margin="4,4" Visibility="{Binding Busy, Converter={StaticResource BoolVisibility}}" />
+          <TextBlock Text="{Binding Error}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" FontSize="12" Margin="4,4,4,0" AutomationProperties.LiveSetting="Polite" />
+          <TextBlock Text="正在保存…" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="4,4" Visibility="{Binding Busy, Converter={StaticResource BoolVisibility}}" />
         </StackPanel>
       </DataTemplate>
       <DataTemplate x:Key="AnnotationAssignmentTemplate">
@@ -121,8 +130,8 @@
           <TextBlock Text="{Binding Title}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,5" />
           <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding AssignmentItem}" DisplayMemberPath="Name" ToolTip="{Binding AssignmentLabel}" AutomationProperties.Name="{Binding AssignmentLabel}" />
           <WrapPanel>
-            <ui:Button Content="添加到选中字体" Command="{Binding AddToFontsCommand}" Margin="0,0,6,6" />
-            <ui:Button Content="从选中字体移除" Command="{Binding RemoveFromFontsCommand}" Margin="0,0,6,6" />
+            <ui:Button Content="添加到选中字体" Command="{Binding AddToFontsCommand}" Margin="0,0,8,8" />
+            <ui:Button Content="从选中字体移除" Command="{Binding RemoveFromFontsCommand}" Margin="0,0,8,8" />
           </WrapPanel>
         </StackPanel>
       </DataTemplate>

@@ -24,6 +24,7 @@ public partial class FontLibraryPage : Page
         previewWidthTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         { Interval = TimeSpan.FromMilliseconds(150) };
         previewWidthTimer.Tick += (_, _) => { previewWidthTimer.Stop(); if (active) UpdatePreviewWidth(); };
+        model.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.HasSelection) && !model.HasSelection) TagAssignment.Visibility = Visibility.Collapsed; };
         FontList.PreviewMouseRightButtonDown += OnFontRightButtonDown;
         FontList.ContextMenu = new ContextMenu();
         FontList.ContextMenuOpening += OnFontContextMenuOpening;
@@ -73,9 +74,68 @@ public partial class FontLibraryPage : Page
                 }
             }));
         };
-        Loaded += (_, _) => UpdateActivation();
+        LibraryWorkspace.SizeChanged += (_, e) => { if (e.WidthChanged) UpdateWorkspace(); };
+        Loaded += (_, _) => { UpdateActivation(); UpdateWorkspace(); };
         Unloaded += (_, _) => UpdateActivation();
         IsVisibleChanged += (_, _) => UpdateActivation();
+    }
+    private bool? compactWorkspace;
+    private bool previewVisible = true;
+    private GridLength listWidth = new(7, GridUnitType.Star), previewWidth = new(3, GridUnitType.Star);
+    private void UpdateWorkspace(bool force = false)
+    {
+        bool compact = LibraryWorkspace.ActualWidth < 900;
+        // Only a breakpoint transition or explicit toggle changes the grid.
+        // Ordinary layout passes must not rewrite column sizes.
+        if (!force && compactWorkspace == compact) return;
+        if (compactWorkspace == false && previewVisible && PreviewPane.Visibility == Visibility.Visible)
+        { listWidth = LibraryWorkspace.ColumnDefinitions[0].Width; previewWidth = LibraryWorkspace.ColumnDefinitions[2].Width; }
+        if (compactWorkspace != compact)
+        {
+            compactWorkspace = compact; previewVisible = !compact;
+        }
+        bool split = !compact && previewVisible;
+        ListPane.Visibility = compact && previewVisible ? Visibility.Collapsed : Visibility.Visible;
+        PreviewPane.Visibility = previewVisible ? Visibility.Visible : Visibility.Collapsed;
+        PreviewSplitter.Visibility = split ? Visibility.Visible : Visibility.Collapsed;
+        PreviewBack.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        PreviewToggle.Content = previewVisible ? "收起预览" : "显示预览";
+        Grid.SetColumn(PreviewPane, compact ? 0 : 2);
+        LibraryWorkspace.ColumnDefinitions[0].MinWidth = split ? 320 : 0;
+        LibraryWorkspace.ColumnDefinitions[0].Width = split ? listWidth : new GridLength(1, GridUnitType.Star);
+        LibraryWorkspace.ColumnDefinitions[1].Width = new GridLength(split ? 12 : 0);
+        LibraryWorkspace.ColumnDefinitions[2].MinWidth = split ? 320 : 0;
+        LibraryWorkspace.ColumnDefinitions[2].Width = split ? previewWidth : new GridLength(0);
+    }
+    private void TogglePreview(object sender, RoutedEventArgs e)
+    {
+        if (compactWorkspace == false && previewVisible)
+        { listWidth = LibraryWorkspace.ColumnDefinitions[0].Width; previewWidth = LibraryWorkspace.ColumnDefinitions[2].Width; }
+        previewVisible = !previewVisible; UpdateWorkspace(force: true);
+        if (previewVisible) { if (compactWorkspace == true) PreviewBack.Focus(); else FontSizeInput.Focus(); } else PreviewToggle.Focus();
+    }
+    private void CommitFontSize(object sender, RoutedEventArgs e)
+    {
+        model.CommitPreviewSize(FontSizeInput.Text);
+        FontSizeInput.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+    }
+    private void FontSizeKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { CommitFontSize(sender, e); e.Handled = true; }
+    }
+    private void MoreActions(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = (FrameworkElement)sender };
+        menu.Items.Add(new MenuItem { Header = "停用临时字体", Command = model.DeactivateCommand });
+        menu.Items.Add(new MenuItem { Header = "卸载本工具安装的字体", Command = model.UninstallCommand });
+        menu.Items.Add(new Separator());
+        var tags = new MenuItem { Header = "分配或移除标签…" };
+        tags.Click += (_, _) => { TagAssignment.Visibility = Visibility.Visible; TagAssignment.IsExpanded = true; TagAssignment.Focus(); };
+        menu.Items.Add(tags);
+        var export = new MenuItem { Header = "导出所选字体…" };
+        export.Click += async (_, _) => await model.ExportSelectionAsync();
+        menu.Items.Add(export);
+        menu.IsEnabled = model.CanManage; menu.IsOpen = true;
     }
     private void OnFontRightButtonDown(object sender, MouseButtonEventArgs e)
     {

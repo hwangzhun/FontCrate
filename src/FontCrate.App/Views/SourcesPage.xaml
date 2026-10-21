@@ -11,8 +11,14 @@
     </StackPanel>
     <!-- Keep both panes bounded so their lists scroll independently. -->
     <Grid x:Name="Workspace" Grid.Row="1">
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
       <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <ui:Card x:Name="ListCard" Padding="16" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+      <WrapPanel x:Name="PaneSwitch" Grid.ColumnSpan="3" Visibility="Collapsed" Margin="0,0,0,8">
+        <ui:Button Content="返回列表" Click="ShowList" Margin="0,0,8,0"/>
+        <ui:Button Content="查看详情" Click="ShowDetail"/>
+      </WrapPanel>
+
+      <ui:Card x:Name="ListCard" Grid.Row="1" Padding="16" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid>
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
           <ui:TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="搜索目录名称或路径" AutomationProperties.Name="搜索来源" Margin="0,0,0,12"/>
@@ -32,7 +38,7 @@
           </Grid>
         </Grid>
       </ui:Card>
-      <ui:Card x:Name="DetailCard" Grid.Column="2" Padding="16" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+      <ui:Card x:Name="DetailCard" Grid.Row="1" Grid.Column="2" Padding="16" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid>
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
           <StackPanel>

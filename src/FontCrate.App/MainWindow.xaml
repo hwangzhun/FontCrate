@@ -25,7 +25,7 @@
       </ui:NavigationView.FooterMenuItems>
     </ui:NavigationView>
     <Border Grid.Row="1" Padding="16,8" Margin="16,0,16,8">
-      <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" />
+      <TextBlock Text="{Binding Status}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" />
     </Border>
     <ui:ContentDialogHost x:Name="DialogHost" Grid.RowSpan="2" IsDisableSiblingsEnabled="True" Panel.ZIndex="10" />
     </Grid>

@@ -1,5 +1,5 @@
 <Page ScrollViewer.CanContentScroll="False" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="FontCrate.App.Views.TasksPage" Title="任务与结果" Background="{DynamicResource ApplicationBackgroundBrush}" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontFamily="Microsoft YaHei UI" FontSize="13">
-  <Grid Margin="24,12,24,0">
+  <Grid Margin="24,12,24,16">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
@@ -7,7 +7,7 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
     <StackPanel Margin="0,0,0,20">
-      <TextBlock Text="任务与结果" FontSize="28" FontWeight="SemiBold" />
+      <TextBlock Text="任务与结果" Style="{StaticResource PageTitle}" />
       <TextBlock Text="查看本次会话的最近任务和结果。任务执行时在进度弹窗中查看或取消。" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap" />
     </StackPanel>
     <Grid Grid.Row="1" Margin="0,0,0,16">
@@ -33,8 +33,16 @@
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <TextBlock Text="最近结果" Style="{StaticResource Heading}" Margin="0,0,0,12" />
-        <ui:TextBox Grid.Row="1" Text="{Binding ResultText, Mode=OneWay}" PlaceholderText="尚无结果。任务完成后将在这里显示。" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="最近操作结果" />
+        <StackPanel Margin="0,0,0,12">
+          <TextBlock Text="{Binding ResultTitle}" Style="{StaticResource Heading}" />
+          <TextBlock Text="{Binding ResultState}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
+          <TextBlock Text="{Binding ResultCounts}" Margin="0,4,0,0" TextWrapping="Wrap" />
+          <ui:Button Content="{Binding ResultActionLabel}" Command="{Binding ResultActionCommand}" IsEnabled="{Binding CanManage}" Visibility="{Binding HasResultAction, Converter={StaticResource BoolVisibility}}" HorizontalAlignment="Left" Margin="0,8,0,4" />
+          <TextBlock Text="{Binding ResultNote}" Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+        <Expander Grid.Row="1" Header="完整结果与日志" IsExpanded="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <ui:TextBox Text="{Binding ResultText, Mode=OneWay}" PlaceholderText="尚无结果。任务完成后将在这里显示。" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="最近操作结果" />
+        </Expander>
       </Grid>
     </ui:Card>
   </Grid>
