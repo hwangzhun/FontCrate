@@ -319,13 +319,16 @@ public sealed class Repository
     {
         await Use(async c => { using var tx = c.BeginTransaction(); await Exec(c, "UPDATE files SET installed=0"); foreach (string h in hashes) await Exec(c, "UPDATE files SET installed=1 WHERE hash=$h", ("$h", h)); tx.Commit(); return 0; }); Changed?.Invoke();
     }
-    public Task<long> BeginOperationAsync(string hash, string kind, string path, string registryName) => Use(async c =>
+    public Task<long> BeginOperationAsync(string hash, string kind, string path, string registryName) =>
+        PerformanceLog.StepAsync("journal-begin", () => Use(async c =>
     {
         await Exec(c, "INSERT INTO operations(hash,kind,stage,path,registry_name) VALUES($h,$k,'prepared',$p,$r)", ("$h", hash), ("$k", kind), ("$p", path), ("$r", registryName));
         using var cmd = Cmd(c, "SELECT last_insert_rowid()"); return Convert.ToInt64(await cmd.ExecuteScalarAsync());
-    });
-    public Task UpdateOperationAsync(long id, string stage, string message = "", bool loaded = false) => Use(c => Exec(c,
-        "UPDATE operations SET stage=$s,message=$m,loaded=$l WHERE id=$id", ("$s", stage), ("$m", message), ("$l", loaded), ("$id", id)));
+    }), new { hash, kind, path, registryName });
+    public Task UpdateOperationAsync(long id, string stage, string message = "", bool loaded = false) =>
+        PerformanceLog.StepAsync("journal-update", () => Use(c => Exec(c,
+            "UPDATE operations SET stage=$s,message=$m,loaded=$l WHERE id=$id", ("$s", stage), ("$m", message), ("$l", loaded), ("$id", id))),
+            new { id, stage, message, loaded });
     public Task<IReadOnlyList<OperationRecord>> OperationsAsync() => Use<IReadOnlyList<OperationRecord>>(async c =>
     {
         using var cmd = Cmd(c, "SELECT id,hash,kind,stage,path,registry_name,message,loaded FROM operations WHERE stage NOT IN ('removed','rolled_back') ORDER BY id");

@@ -6,7 +6,10 @@ public sealed class Scanner(Repository repository, IFontParser parser)
 {
     private readonly SemaphoreSlim scanGate = new(1);
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase) { ".ttf", ".otf", ".ttc", ".otc" };
-    public async Task<ScanResult> ScanAsync(Source source, bool verify, IProgress<ScanProgress>? progress, CancellationToken ct)
+    public Task<ScanResult> ScanAsync(Source source, bool verify, IProgress<ScanProgress>? progress, CancellationToken ct) =>
+        PerformanceLog.BatchAsync("scan", () => ScanLockedAsync(source, verify, progress, ct),
+            new { source.Id, source.Path, verify }, result => result, ct);
+    private async Task<ScanResult> ScanLockedAsync(Source source, bool verify, IProgress<ScanProgress>? progress, CancellationToken ct)
     {
         await scanGate.WaitAsync(ct);
         try { return await ScanCore(source, verify, progress, ct); }
@@ -46,6 +49,7 @@ public sealed class Scanner(Repository repository, IFontParser parser)
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            PerformanceLog.Error("scan-source-error", e, new { source.Id, source.Path });
             await repository.SetSourceAvailabilityAsync(source.Id, false);
             await repository.RecordErrorAsync(source.Id, source.Path, e.Message);
             errors = 1; enumerationComplete = 1;
@@ -74,7 +78,7 @@ public sealed class Scanner(Repository repository, IFontParser parser)
                         }
                     }
                     catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-                    { complete = false; Interlocked.Increment(ref errors); await repository.RecordErrorAsync(source.Id, dir, e.Message); }
+                    { PerformanceLog.Error("scan-directory-error", e, new { path = dir }); complete = false; Interlocked.Increment(ref errors); await repository.RecordErrorAsync(source.Id, dir, e.Message); }
                 }
                 Volatile.Write(ref enumerationComplete, 1);
                 Report("目录枚举完成");
@@ -86,6 +90,9 @@ public sealed class Scanner(Repository repository, IFontParser parser)
         {
             await foreach (string path in paths.Reader.ReadAllAsync(token))
             {
+                var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                using var pathScope = PerformanceLog.FontScope("", path);
+                PerformanceLog.TryWrite("scan-file-start", data: new { path }, outcome: "started");
                 IndexedFile item;
                 long size = 0, modified = 0;
                 try
@@ -96,11 +103,12 @@ public sealed class Scanner(Repository repository, IFontParser parser)
                     { item = new(path, size, modified, known.Hash, null); Interlocked.Increment(ref unchanged); }
                     else
                     {
-                        string hash = await FontIdentity.HashAsync(path, token);
+                        string hash = await PerformanceLog.StepAsync("scan-hash", () => FontIdentity.HashAsync(path, token));
+                        using var hashScope = PerformanceLog.FontScope(hash, path);
                         IReadOnlyList<ParsedFace>? faces = null;
                         if (!await repository.HasFileAsync(hash))
                         {
-                            faces = await parser.ParseAsync(path, token);
+                            faces = await PerformanceLog.StepAsync("scan-parse", () => parser.ParseAsync(path, token));
                             if (faces.Count == 0) throw new InvalidDataException("文件不包含可用的字体 face");
                             if (await FontIdentity.HashAsync(path, token) != hash) throw new IOException("解析期间文件内容发生变化，请重扫");
                             Interlocked.Increment(ref parsed);
@@ -112,7 +120,12 @@ public sealed class Scanner(Repository repository, IFontParser parser)
                     }
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
-                { Interlocked.Increment(ref errors); item = new(path, size, modified, null, null, e.Message); }
+                { PerformanceLog.Error("scan-file-error", e, new { path }); Interlocked.Increment(ref errors); item = new(path, size, modified, null, null, e.Message); }
+                catch (OperationCanceledException e) { PerformanceLog.TryWrite("scan-file-canceled", exception: e, data: new { path }, outcome: "canceled", level: "Info"); throw; }
+                using (PerformanceLog.FontScope(item.Hash ?? "", path))
+                    PerformanceLog.TryWrite("scan-file-complete", elapsed.Elapsed.TotalMilliseconds,
+                        data: new { item.Hash, item.Error, unchanged = item.Faces is null },
+                        outcome: item.Error is not null ? "failed" : item.Faces is null ? "skipped" : "completed");
                 await results.Writer.WriteAsync(item, token);
             }
         }
@@ -126,13 +139,13 @@ public sealed class Scanner(Repository repository, IFontParser parser)
                 batch.Add(item);
                 if (batch.Count >= 100)
                 {
-                    await repository.SaveBatchAsync(source.Id, scan, batch);
+                    await PerformanceLog.StepAsync("scan-save", () => repository.SaveBatchAsync(source.Id, scan, batch), new { count = batch.Count });
                     Interlocked.Add(ref processed, batch.Count); batch.Clear(); Report("扫描中");
                 }
             }
             if (batch.Count > 0)
             {
-                await repository.SaveBatchAsync(source.Id, scan, batch);
+                await PerformanceLog.StepAsync("scan-save", () => repository.SaveBatchAsync(source.Id, scan, batch), new { count = batch.Count });
                 Interlocked.Add(ref processed, batch.Count); Report("扫描中");
             }
         }), CancellationToken.None);

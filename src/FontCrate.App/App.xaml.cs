@@ -30,16 +30,19 @@ public partial class App : System.Windows.Application
         if (!first) { MessageBox.Show("FontCrate 已在运行，请从托盘打开。", "FontCrate"); Shutdown(); return; }
         try
         {
+            PerformanceLog.Initialize(Path.Combine(AppContext.BaseDirectory, "logs"));
+            TaskScheduler.UnobservedTaskException += (_, args) => PerformanceLog.Error("unobserved-task-error", args.Exception);
+            DispatcherUnhandledException += (_, args) => PerformanceLog.Error("ui-unhandled-error", args.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+                PerformanceLog.TryWrite("unhandled-error", level: "Error", exception: args.ExceptionObject as Exception,
+                    detail: args.ExceptionObject.ToString(), data: new { args.IsTerminating });
             var startup = System.Diagnostics.Stopwatch.StartNew();
-            string data = AppIdentity.ResolveDataDirectory(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
-            Directory.CreateDirectory(data);
-            PerformanceLog.Path = Path.Combine(data, "performance.jsonl");
             string? build = typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
             PerformanceLog.Write("session-start", 0, $"version={build}; os={Environment.OSVersion}; framework={System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-            TaskScheduler.UnobservedTaskException += (_, args) => PerformanceLog.Write("unobserved-task-error", 0, args.Exception.ToString());
-            DispatcherUnhandledException += (_, args) => PerformanceLog.Write("ui-unhandled-error", 0, args.Exception.ToString());
-            AppDomain.CurrentDomain.UnhandledException += (_, args) => PerformanceLog.Write("unhandled-error", 0, args.ExceptionObject.ToString());
-            var repo = new Repository(Path.Combine(data, "library.db")); await repo.InitializeAsync();
+            string data = AppIdentity.ResolveDataDirectory(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+            Directory.CreateDirectory(data);
+            var repo = new Repository(Path.Combine(data, "library.db"));
+            await PerformanceLog.StepAsync("database-initialize", repo.InitializeAsync);
             var parser = new DirectWriteParser(); var scanner = new Scanner(repo, parser);
             previews = new PreviewService(); var platform = new WindowsFontPlatform(data, parser);
             var operations = new FontOperations(repo, platform);
@@ -92,16 +95,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            PerformanceLog.Write("startup-error", 0, ex.ToString());
-            string? errorLog = null;
-            try
-            {
-                string directory = AppIdentity.ResolveDataDirectory(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
-                Directory.CreateDirectory(directory);
-                errorLog = Path.Combine(directory, "startup-error.log");
-                File.WriteAllText(errorLog, ex.ToString());
-            }
-            catch { errorLog = null; }
+            string? errorLog = PerformanceLog.TryWrite("startup-error", level: "Error", exception: ex, outcome: "failed");
             MessageBox.Show(ex.Message + "\n\n具体错误：" + ex.GetBaseException().Message +
                 (errorLog is null ? "" : "\n\n完整日志：" + errorLog), "FontCrate 启动失败");
             tray?.Dispose(); shutdownReady = true; Shutdown(1);
@@ -131,6 +125,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
+            PerformanceLog.Error("exit-error", ex);
             exiting = false;
             if (model is not null) { model.Status = "退出清理失败：" + ex.Message; model.ResultText = ex.ToString(); }
             await InformExitFailureAsync("退出清理失败，请重试。\n" + ex.Message);

@@ -5,7 +5,7 @@ on:
       tag:
         description: Existing release tag to package
         required: true
-        default: v1.0.3
+        default: v1.0.4
       publish:
         description: Upload assets and publish an existing draft release
         type: boolean

@@ -44,10 +44,14 @@ internal sealed class FakePlatform(string root) : IFontPlatform
     public List<SystemFont> External { get; } = [];
     public bool FailLoad, FailUnload, FailRegistration, FailAfterRegistration;
     public int LoadDelay, Enumerations, Notifications, MaxConcurrentLoads;
+    public int UnloadCalls, MaxConcurrentUnloads;
     private int concurrentLoads;
+    private int concurrentUnloads;
     private readonly object sync = new();
     public Action<string>? Loading;
+    public Action<string>? Unloading;
     public string? FailLoadHash;
+    public string? FailUnloadHash;
     public int Load(string path)
     {
         int concurrent = Interlocked.Increment(ref concurrentLoads);
@@ -64,7 +68,22 @@ internal sealed class FakePlatform(string root) : IFontPlatform
         }
         finally { Interlocked.Decrement(ref concurrentLoads); }
     }
-    public bool Unload(string path) { lock (sync) { if (FailUnload || Loads.GetValueOrDefault(path) == 0) return false; Loads[path]--; return true; } }
+    public bool Unload(string path)
+    {
+        Interlocked.Increment(ref UnloadCalls);
+        int concurrent = Interlocked.Increment(ref concurrentUnloads);
+        lock (sync) MaxConcurrentUnloads = Math.Max(MaxConcurrentUnloads, concurrent);
+        try
+        {
+            Unloading?.Invoke(path);
+            lock (sync)
+            {
+                if (FailUnload || Path.GetFileNameWithoutExtension(path) == FailUnloadHash || Loads.GetValueOrDefault(path) == 0) return false;
+                Loads[path]--; return true;
+            }
+        }
+        finally { Interlocked.Decrement(ref concurrentUnloads); }
+    }
     public bool IsLoaded(string path) { lock (sync) return Loads.GetValueOrDefault(path) > 0; }
     public void NotifyChanged() => Interlocked.Increment(ref Notifications);
     public string? GetRegistration(string name) => Registry.GetValueOrDefault(name);

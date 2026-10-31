@@ -61,6 +61,7 @@
                 </WrapPanel.Style>
                 <TextBlock Text="{Binding SelectionCount, StringFormat=已选 {0} 项}" VerticalAlignment="Center" Margin="0,0,8,8" />
                 <ui:Button Content="临时启用" Appearance="Primary" Command="{Binding ActivateCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon Play24}" />
+                <ui:Button Content="停用临时字体" Command="{Binding DeactivateCommand}" Margin="0,0,8,8" ToolTip="停用所选字体的临时启用，保留原文件和持久安装" />
                 <ui:Button Content="安装" Command="{Binding InstallCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon ArrowDownload24}" />
                 <ui:Button Content="收藏" Command="{Binding FavoriteCommand}" Margin="0,0,8,8" Icon="{ui:SymbolIcon Star24}" />
                 <ui:Button Content="更多操作" Click="MoreActions" Margin="0,0,8,8" />

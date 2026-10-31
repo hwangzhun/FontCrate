@@ -126,7 +126,6 @@ public partial class FontLibraryPage : Page
     private void MoreActions(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (FrameworkElement)sender };
-        menu.Items.Add(new MenuItem { Header = "停用临时字体", Command = model.DeactivateCommand });
         menu.Items.Add(new MenuItem { Header = "卸载本工具安装的字体", Command = model.UninstallCommand });
         menu.Items.Add(new Separator());
         var tags = new MenuItem { Header = "分配或移除标签…" };

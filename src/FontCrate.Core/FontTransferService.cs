@@ -24,8 +24,14 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
         return safe[..(160 - extension.Length)] + extension;
     }
 
-    public async Task<IReadOnlyList<FontTransferResult>> ImportAsync(IReadOnlyList<string> paths, CancellationToken ct,
-        IProgress<OperationProgress>? progress = null)
+    public Task<IReadOnlyList<FontTransferResult>> ImportAsync(IReadOnlyList<string> paths, CancellationToken ct,
+        IProgress<OperationProgress>? progress = null) => PerformanceLog.BatchAsync("import",
+            () => ImportCoreAsync(paths, ct, progress), new { total = paths.Distinct(StringComparer.OrdinalIgnoreCase).Count(), importedDirectory },
+            results => Summary(results), ct);
+    private static object Summary(IReadOnlyList<FontTransferResult> results) => new
+    { processed = results.Count, succeeded = results.Count(r => r.Success), failed = results.Count(r => !r.Success) };
+    private async Task<IReadOnlyList<FontTransferResult>> ImportCoreAsync(IReadOnlyList<string> paths, CancellationToken ct,
+        IProgress<OperationProgress>? progress)
     {
         await gate.WaitAsync(ct);
         try
@@ -39,6 +45,9 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
                 foreach (string path in files)
                 {
                     if (ct.IsCancellationRequested) break;
+                    using var pathScope = PerformanceLog.FontScope("", path);
+                    var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                    PerformanceLog.TryWrite("import-file-start", data: new { path }, outcome: "started");
                     try
                     {
                         if (!Extensions.Contains(Path.GetExtension(path))) throw new InvalidDataException("仅支持 TTF、OTF、TTC、OTC 字体文件");
@@ -48,11 +57,12 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
                         try
                         {
                             await CopyAsync(path, temporary, ct);
-                            string hash = await FontIdentity.HashAsync(temporary, ct);
+                            string hash = await PerformanceLog.StepAsync("import-hash", () => FontIdentity.HashAsync(temporary, ct));
+                            using var hashScope = PerformanceLog.FontScope(hash, path);
                             // DirectWrite needs the original font extension when opening the snapshot.
                             string snapshot = temporary + Path.GetExtension(path).ToLowerInvariant();
                             File.Move(temporary, snapshot); temporary = snapshot;
-                            if ((await parser.ParseAsync(temporary, ct)).Count == 0) throw new InvalidDataException("文件不包含可用字体");
+                            if ((await PerformanceLog.StepAsync("import-parse", () => parser.ParseAsync(temporary, ct))).Count == 0) throw new InvalidDataException("文件不包含可用字体");
                             if (await FontIdentity.HashAsync(temporary, ct) != hash) throw new IOException("解析期间内容发生变化");
                             string directory = Path.Combine(importedDirectory, hash);
                             Directory.CreateDirectory(directory);
@@ -64,11 +74,13 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
                             source ??= await repository.AddSourceAsync(importedDirectory);
                             if (existing is null) File.Move(temporary, target);
                             results.Add(new(path, true, existing is null ? "已导入" : "已存在，未重复复制", target));
+                            PerformanceLog.TryWrite("import-file-complete", elapsed.Elapsed.TotalMilliseconds,
+                                data: new { target }, outcome: existing is null ? "completed" : "skipped");
                         }
                         finally { if (File.Exists(temporary)) File.Delete(temporary); }
                     }
-                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { results.Add(new(path, false, ex.Message)); }
+                    catch (OperationCanceledException ex) when (ct.IsCancellationRequested) { PerformanceLog.TryWrite("transfer-file-canceled", exception: ex, outcome: "canceled", level: "Info"); break; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { PerformanceLog.Error("import-file-error", ex); results.Add(new(path, false, ex.Message)); }
                     progress?.Report(new(results.Count, files.Length, Path.GetFileName(path)));
                 }
             }
@@ -95,7 +107,11 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
         CancellationToken ct, IProgress<OperationProgress>? progress = null) =>
         ExportAsync(faces, destination, false, true, ct, progress);
 
-    private async Task<IReadOnlyList<FontTransferResult>> ExportAsync(IReadOnlyList<FaceRow> faces, string destination,
+    private Task<IReadOnlyList<FontTransferResult>> ExportAsync(IReadOnlyList<FaceRow> faces, string destination,
+        bool singleFile, bool zip, CancellationToken ct, IProgress<OperationProgress>? progress) =>
+        PerformanceLog.BatchAsync(zip ? "export-zip" : "export", () => ExportCoreAsync(faces, destination, singleFile, zip, ct, progress),
+            new { total = faces.DistinctBy(f => f.Hash).Count(), destination, singleFile, zip }, results => Summary(results), ct);
+    private async Task<IReadOnlyList<FontTransferResult>> ExportCoreAsync(IReadOnlyList<FaceRow> faces, string destination,
         bool singleFile, bool zip, CancellationToken ct, IProgress<OperationProgress>? progress)
     {
         await gate.WaitAsync(ct);
@@ -116,23 +132,27 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
                 foreach (var face in files)
                 {
                     if (ct.IsCancellationRequested) break;
+                    using var fontScope = PerformanceLog.FontScope(face.Hash, face.Path);
+                    var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                    PerformanceLog.TryWrite("export-file-start", data: new { destination, zip }, outcome: "started");
                     string temp = Path.Combine(directory, ".fontcrate-" + Guid.NewGuid().ToString("N") + ".tmp");
                     try
                     {
                         string source = await StageSourceAsync(face, temp, ct);
                         if ((zip || singleFile) && string.Equals(source, destination, StringComparison.OrdinalIgnoreCase))
                             throw new IOException("不能覆盖字体来源文件");
-                        if (zip) staged.Add((face, temp, source));
+                        if (zip) { staged.Add((face, temp, source)); PerformanceLog.TryWrite("export-file-staged", elapsed.Elapsed.TotalMilliseconds); }
                         else
                         {
                             string target = singleFile ? destination : UniqueTarget(destination, Path.GetFileName(source), names);
                             ct.ThrowIfCancellationRequested();
                             File.Move(temp, target, singleFile);
                             results.Add(new(face.FullName, true, "已导出", target));
+                            PerformanceLog.TryWrite("export-file-complete", elapsed.Elapsed.TotalMilliseconds, data: new { target }, outcome: "completed");
                         }
                     }
-                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { results.Add(new(face.FullName, false, ex.Message)); }
+                    catch (OperationCanceledException ex) when (ct.IsCancellationRequested) { PerformanceLog.TryWrite("transfer-file-canceled", exception: ex, outcome: "canceled", level: "Info"); break; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { PerformanceLog.Error("export-file-error", ex); results.Add(new(face.FullName, false, ex.Message)); }
                     finally { if (!staged.Any(s => s.Temp == temp) && File.Exists(temp)) File.Delete(temp); }
                     progress?.Report(new(results.Count + staged.Count, zip ? files.Length * 2 : files.Length, face.FullName));
                 }
@@ -144,17 +164,21 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
                         int written = 0;
                         foreach (var item in staged)
                         {
+                            using var fontScope = PerformanceLog.FontScope(item.Face.Hash, item.Source);
+                            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                            PerformanceLog.TryWrite("zip-entry-start", outcome: "started");
                             ct.ThrowIfCancellationRequested();
                             string name = UniqueTarget(null, Path.GetFileName(item.Source), names);
                             var entry = archive.CreateEntry(name, CompressionLevel.Fastest);
                             await using var output = entry.Open();
                             await using var input = File.OpenRead(item.Temp);
                             await input.CopyToAsync(output, ct);
+                            PerformanceLog.TryWrite("zip-entry-complete", elapsed.Elapsed.TotalMilliseconds, data: new { name }, outcome: "completed");
                             progress?.Report(new(files.Length + ++written, files.Length * 2, "正在打包：" + item.Face.FullName));
                         }
                     }
                     ct.ThrowIfCancellationRequested();
-                    File.Move(archiveTemp, destination, true);
+                    PerformanceLog.Step("zip-commit", () => File.Move(archiveTemp, destination, true), new { destination });
                     results.AddRange(staged.Select(s => new FontTransferResult(s.Face.FullName, true, "已打包导出", destination)));
                 }
             }
@@ -182,7 +206,7 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
                 await CopyAsync(location.Path, temp, ct);
                 if (await FontIdentity.HashAsync(temp, ct) == face.Hash) return location.Path;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { PerformanceLog.Error("export-source-error", ex, new { location.Path }); }
             if (File.Exists(temp)) File.Delete(temp);
         }
         throw new IOException("来源不可用或内容已变化，请重新扫描");
@@ -199,7 +223,9 @@ public sealed class FontTransferService(Repository repository, IFontParser parse
         return directory is null ? candidate : Path.Combine(directory, candidate);
     }
 
-    private static async Task CopyAsync(string source, string target, CancellationToken ct)
+    private static Task CopyAsync(string source, string target, CancellationToken ct) =>
+        PerformanceLog.StepAsync("transfer-copy", () => CopyCoreAsync(source, target, ct), new { source, target });
+    private static async Task CopyCoreAsync(string source, string target, CancellationToken ct)
     {
         await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true);
         await using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, true);
